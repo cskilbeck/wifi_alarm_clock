@@ -38,9 +38,10 @@ extern "C" {
 /**
  * @brief Audio board handle
  */
-struct audio_board_handle {
-    audio_hal_handle_t audio_hal;    /*!< pa hardware abstract layer handle */
-    audio_hal_handle_t adc_hal;      /*!< adc hardware abstract layer handle */
+struct audio_board_handle
+{
+    audio_hal_handle_t audio_hal; /*!< pa hardware abstract layer handle */
+    audio_hal_handle_t adc_hal;   /*!< adc hardware abstract layer handle */
 };
 
 typedef struct audio_board_handle *audio_board_handle_t;
@@ -104,6 +105,8 @@ audio_board_handle_t audio_board_get_handle(void);
  *          others  fail
  */
 esp_err_t audio_board_deinit(audio_board_handle_t audio_board);
+
+esp_err_t audio_board_encoder_init(esp_periph_set_handle_t set);
 
 #ifdef __cplusplus
 }

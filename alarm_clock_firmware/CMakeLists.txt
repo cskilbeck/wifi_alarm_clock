@@ -7,4 +7,7 @@ cmake_minimum_required(VERSION 3.5)
 
 include($ENV{ADF_PATH}/CMakeLists.txt)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+
+idf_build_set_property(COMPILE_OPTIONS "-Wno-deprecated-declarations" APPEND)
+
 project(alarm_clock_firmware)

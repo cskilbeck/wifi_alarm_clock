@@ -9,6 +9,8 @@ set(COMPONENT_SRCS
 ./my_board_v1_0/board.c
 ./my_board_v1_0/board_pins_config.c
 ./my_codec_driver/new_codec.c
+./my_board_v1_0/periph_encoder.c
+./my_board_v1_0/encoder.cpp
 )
 endif()
 
