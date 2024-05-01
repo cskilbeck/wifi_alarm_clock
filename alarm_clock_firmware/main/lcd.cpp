@@ -307,7 +307,7 @@ esp_err_t lcd_init()
 
     spi_device_interface_config_t devcfg = {};
     devcfg.flags = SPI_DEVICE_NO_RETURN_RESULT;
-    devcfg.clock_speed_hz = 80 * 1000 * 1000;         // Clock out at 26 MHz
+    devcfg.clock_speed_hz = 80 * 1000 * 1000;         // Clock out at 80 MHz
     devcfg.mode = 0;                                  // SPI mode 0
     devcfg.spics_io_num = PIN_NUM_CS;                 // CS pin
     devcfg.queue_size = num_transfers;                // We want to be able to queue 7 transactions at a time
@@ -401,8 +401,6 @@ esp_err_t lcd_init()
 
 esp_err_t lcd_update()
 {
-    ESP_LOGI(TAG, "update");
-
     // take the buffer mutex, the dma callback wil release it
     while(num_dma_transactions_in_flight != 0) {
         ESP_LOGI(TAG, "Waiting for dma");
@@ -416,7 +414,6 @@ esp_err_t lcd_update()
         ESP_ERROR_CHECK(spi_device_queue_trans(spi, spi_transactions + i, portMAX_DELAY));
     }
 
-    ESP_LOGI(TAG, "updated");
     return ESP_OK;
 }
 
@@ -435,13 +432,10 @@ esp_err_t lcd_set_backlight(uint32_t brightness_0_8191)
 
 esp_err_t lcd_get_backbuffer(uint16_t **buffer, TickType_t wait_for_ticks)
 {
-    ESP_LOGI(TAG, "get_backbuffer");
-
     assert(buffer != nullptr);
 
     if(xSemaphoreTake(lcd_buffer_semaphore, wait_for_ticks) == pdTRUE) {
         *buffer = lcd_buffer;
-        ESP_LOGI(TAG, "backbuffer %p", lcd_buffer);
         return ESP_OK;
     }
     ESP_LOGW(TAG, "Can't acquire LCD backbuffer mutex!?");

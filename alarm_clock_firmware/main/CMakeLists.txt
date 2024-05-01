@@ -1,13 +1,15 @@
 set(COMPONENT_SRCS
     main.c
-    user_main.c
     lcd.cpp
     wifi.cpp
     led.cpp
     stream.c
+    pngle.c
+    image.cpp
+    font.cpp
     )
 set(COMPONENT_ADD_INCLUDEDIRS "")
 
-# set(COMPONENT_EMBED_TXTFILES music-16b-2c-8000hz.mp3 music-16b-2c-22050hz.mp3 music-16b-2c-44100hz.mp3)
+set(COMPONENT_EMBED_FILES "data/font/Cascadia.png" "data/test.png")
 
 register_component()

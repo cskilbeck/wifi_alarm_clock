@@ -1,0 +1,7 @@
+#pragma once
+
+extern const uint8_t cascadia_png_start[] asm("_binary_Cascadia_png_start");
+extern const uint8_t cascadia_png_end[] asm("_binary_Cascadia_png_end");
+
+extern const uint8_t test_png_start[] asm("_binary_test_png_start");
+extern const uint8_t test_png_end[] asm("_binary_test_png_end");

@@ -37,9 +37,11 @@
 #include "led.h"
 #include "lcd.h"
 #include "wifi.h"
-// #include "encoder.h"
+#include "image.h"
+#include "font.h"
 #include "stream.h"
 #include "user_main.h"
+#include "assets.h"
 
 static char const *TAG = "stream";
 
@@ -47,7 +49,20 @@ static char const *TAG = "stream";
 
 static TaskHandle_t stream_task_handle;
 
+uint16_t g_pixel = 1;
+
 //////////////////////////////////////////////////////////////////////
+
+// static void draw_blob(uint16_t *buffer, int x, int y, int w, int h, uint16_t color)
+// {
+//     uint16_t *p = buffer + y * LCD_WIDTH + x;
+//     for(int y = 0; y < h; ++y) {
+//         for(int x = 0; x < w; ++x) {
+//             p[x] = color;
+//         }
+//         p += LCD_WIDTH;
+//     }
+// }
 
 static void stream_task(void *)
 {
@@ -128,6 +143,12 @@ static void stream_task(void *)
 
     audio_pipeline_run(pipeline);
 
+    // uint16_t *buffer;
+    // if(lcd_get_backbuffer(&buffer, portMAX_DELAY) == ESP_OK) {
+    //     memset(buffer, 0xff, LCD_WIDTH * LCD_HEIGHT * 2);
+    //     lcd_release_backbuffer_and_update();
+    // }
+
     while(1) {
         audio_event_iface_msg_t msg;
         esp_err_t ret = audio_event_iface_listen(evt, &msg, 1);
@@ -166,11 +187,20 @@ static void stream_task(void *)
             switch(msg.cmd) {
             case PERIPH_ENCODER_CLOCKWISE:
                 direction = 4;
+                g_pixel <<= 1;
+                if(g_pixel == 0) {
+                    g_pixel = 1;
+                }
                 break;
             case PERIPH_ENCODER_COUNTER_CLOCKWISE:
                 direction = -4;
+                g_pixel >>= 1;
+                if(g_pixel == 0) {
+                    g_pixel = 0x8000;
+                }
                 break;
             }
+            // int old_volume = volume;
             if(direction != 0) {
                 volume += direction;
                 if(volume > 0) {
@@ -178,7 +208,20 @@ static void stream_task(void *)
                 } else if(volume < -64) {
                     volume = -64;
                 }
-                alc_volume_setup_set_volume(volume_control, volume);
+                // alc_volume_setup_set_volume(volume_control, volume);
+                // uint16_t *buffer;
+                // if(lcd_get_backbuffer(&buffer, portMAX_DELAY) == ESP_OK) {
+                //     draw_blob(buffer, 115, 88 - old_volume, 10, 10, 0xffff);
+                //     draw_blob(buffer, 115, 88 - volume, 10, 10, 0);
+                //     lcd_release_backbuffer_and_update();
+                // }
+                uint16_t *lcd_buffer;
+                if(lcd_get_backbuffer(&lcd_buffer, portMAX_DELAY) == ESP_OK) {
+                    // image_blit(&font_image, lcd_buffer, 0, 0, 20, 20, font_image.width, font_image.height);
+                    // image_fillrect(lcd_buffer, 20, 20, 128, 128, g_pixel);
+                    ESP_LOGI(TAG, "%04x", g_pixel);
+                    lcd_release_backbuffer_and_update();
+                }
             }
         }
 
