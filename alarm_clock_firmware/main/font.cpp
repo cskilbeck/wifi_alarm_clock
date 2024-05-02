@@ -9,12 +9,14 @@
 
 static char const *TAG = "font";
 
-void font_drawtext(font *fnt, image_t *src_image, uint16_t *lcd_buffer, vec2_t const *pos, uint8_t const *text)
+void font_drawtext(font *fnt, image_t *src_image, uint16_t *lcd_buffer, vec2_t const *pos, uint8_t const *text, uint16_t back_color)
 {
-    // uint16_t back_color = 0b1111100000000000;
-    uint16_t back_color = 0x0000;
+    assert(fnt != nullptr);
+    assert(src_image != nullptr);
+    assert(lcd_buffer != nullptr);
+    assert(pos != nullptr);
+    assert(text != nullptr);
 
-    // fill in the edges if necessary
     int char_height = fnt->height;
 
     vec2_t curpos = *pos;
@@ -76,4 +78,18 @@ void font_drawtext(font *fnt, image_t *src_image, uint16_t *lcd_buffer, vec2_t c
         }
         curpos.x += char_width;
     }
+}
+
+void font_measure_string(font *fnt, uint8_t const *text, vec2_t *size)
+{
+    assert(size != nullptr);
+    assert(text != nullptr);
+    assert(fnt != nullptr);
+
+    int width = 0;
+    for(uint8_t c = *text; c != 0; c = *++text) {
+        width += fnt->advances[c];
+    }
+    size->x = width;
+    size->y = fnt->height;
 }

@@ -28,8 +28,12 @@ typedef struct _font
     int num_advances;
 } font;
 
-void font_drawtext(font *fnt, image_t *src_image, uint16_t *lcd_buffer, vec2_t const *pos, uint8_t const *text);
+void font_drawtext(font *fnt, image_t *src_image, uint16_t *lcd_buffer, vec2_t const *pos, uint8_t const *text, uint16_t back_color);
+
+void font_measure_string(font *fnt, uint8_t const *text, vec2_t *size);
 
 #if defined(__cplusplus)
 }
 #endif
+
+// h/v-padding, h/v-alignment

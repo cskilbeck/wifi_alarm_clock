@@ -83,16 +83,41 @@ void image_blit_noclip(image_t const *source_image, uint16_t *lcd_buffer, vec2_t
 
 void image_blit(image_t const *source_image, uint16_t *lcd_buffer, vec2_t const *src_pos, vec2_t const *dst_pos, vec2_t const *size)
 {
-    vec2_t clipped_src_pos = vec2_t{ min(src_pos->x, source_image->width - 1), min((int)src_pos->y, source_image->height - 1) };
+    vec2_t sz = *size;
+    vec2_t s = *src_pos;
+    vec2_t d = *dst_pos;
 
-    vec2_t clipped_dst_pos = vec2_t{ min((int)dst_pos->x, LCD_WIDTH - 1), min((int)dst_pos->y, LCD_HEIGHT - 1) };
-
-    vec2_t clipped_size = vec2_t{ min(min(size->x, source_image->width - src_pos->x), LCD_WIDTH - dst_pos->x),
-                                  min(min(size->y, source_image->height - src_pos->y), LCD_HEIGHT - dst_pos->y) };
-
-    if(clipped_size.x > 0 && clipped_size.y > 0) {
-        image_blit_noclip(source_image, lcd_buffer, &clipped_src_pos, &clipped_dst_pos, &clipped_size);
+    if(d.x < 0) {
+        sz.x += d.x;
+        s.x -= d.x;
+        d.x = 0;
     }
+    if(sz.x <= 0) {
+        return;
+    }
+    if(d.y < 0) {
+        sz.y += d.y;
+        s.y -= d.y;
+        d.y = 0;
+    }
+    if(sz.y <= 0) {
+        return;
+    }
+    int right = (d.x + sz.x) - LCD_WIDTH;
+    if(right > 0) {
+        sz.x -= right;
+        if(sz.x <= 0) {
+            return;
+        }
+    }
+    int bottom = (d.y + sz.y) - LCD_HEIGHT;
+    if(bottom > 0) {
+        sz.y -= bottom;
+        if(sz.y <= 0) {
+            return;
+        }
+    }
+    image_blit_noclip(source_image, lcd_buffer, &s, &d, &sz);
 }
 
 void image_fillrect_noclip(uint16_t *lcd_buffer, vec2_t const *topleft, vec2_t const *size, uint16_t pixel)
@@ -110,9 +135,35 @@ void image_fillrect_noclip(uint16_t *lcd_buffer, vec2_t const *topleft, vec2_t c
 
 void image_fillrect(uint16_t *lcd_buffer, vec2_t const *topleft, vec2_t const *size, uint16_t pixel)
 {
-    vec2_t clipped_topleft = vec2_t{ min(topleft->x, LCD_WIDTH - 1), min(topleft->y, LCD_HEIGHT - 1) };
-    vec2_t clipped_size = vec2_t{ min(size->x, LCD_WIDTH - (clipped_topleft.x + size->x)), min(size->y, LCD_HEIGHT - -(clipped_topleft.y + size->y)) };
-    if(clipped_size.x > 0 && clipped_size.y > 0) {
-        image_fillrect_noclip(lcd_buffer, &clipped_topleft, &clipped_size, pixel);
+    vec2_t tl = *topleft;
+    vec2_t sz = *size;
+    if(tl.x < 0) {
+        sz.x += tl.x;
+        tl.x = 0;
     }
+    if(sz.x <= 0) {
+        return;
+    }
+    if(tl.y < 0) {
+        sz.y += tl.y;
+        tl.y = 0;
+    }
+    if(sz.y <= 0) {
+        return;
+    }
+    int right = (tl.x + sz.x) - LCD_WIDTH;
+    if(right > 0) {
+        sz.x -= right;
+        if(sz.x <= 0) {
+            return;
+        }
+    }
+    int bottom = (tl.y + sz.y) - LCD_HEIGHT;
+    if(bottom > 0) {
+        sz.y -= bottom;
+        if(sz.y <= 0) {
+            return;
+        }
+    }
+    image_fillrect_noclip(lcd_buffer, &tl, &sz, pixel);
 }
