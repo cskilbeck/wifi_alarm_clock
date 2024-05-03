@@ -1,3 +1,5 @@
+//////////////////////////////////////////////////////////////////////
+
 #include <freertos/FreeRTOS.h>
 
 #include <esp_log.h>
@@ -9,17 +11,25 @@
 
 static char const *TAG = "image";
 
+//////////////////////////////////////////////////////////////////////
+
 namespace
 {
+    //////////////////////////////////////////////////////////////////////
+
     template <typename T> T min(T const &a, T const &b)
     {
         return a < b ? a : b;
     }
 
+    //////////////////////////////////////////////////////////////////////
+
     template <typename T> T max(T const &a, T const &b)
     {
         return a > b ? a : b;
     }
+
+    //////////////////////////////////////////////////////////////////////
 
     void setpixel(pngle_t *pngle, uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint8_t rgba[4])
     {
@@ -37,6 +47,8 @@ namespace
         img->pixel_data[x + y * img->width] = pixel;
     }
 
+    //////////////////////////////////////////////////////////////////////
+
     void on_init(pngle_t *pngle, uint32_t w, uint32_t h)
     {
         image_t *img = (image_t *)pngle_get_user_data(pngle);
@@ -50,23 +62,36 @@ namespace
 
 }    // namespace
 
-void image_decode_png(image_t *image, uint8_t const *png_data, size_t png_size)
+//////////////////////////////////////////////////////////////////////
+
+esp_err_t image_decode_png(image_t *image, uint8_t const *png_data, size_t png_size)
 {
     pngle_t *pngle = pngle_new();
+
+    if(pngle == nullptr) {
+        return ESP_ERR_NO_MEM;
+    }
+
     pngle_set_user_data(pngle, image);
     pngle_set_init_callback(pngle, on_init);
     pngle_set_draw_callback(pngle, setpixel);
+
     int err = pngle_feed(pngle, png_data, png_size);
+
     if(err < 0) {
         ESP_LOGE(TAG, "PNGLE Error %d", err);
+        return ESP_FAIL;
     }
     pngle_destroy(pngle);
+    return ESP_OK;
 }
 
-// lcd_buffer is fixed at LCD_WIDTH, LCD_HEIGHT !
+//////////////////////////////////////////////////////////////////////
 
-void image_blit_noclip(image_t const *source_image, uint16_t *lcd_buffer, vec2_t const *src_pos, vec2_t const *dst_pos, vec2_t const *size)
+void image_blit_noclip(image_t const *source_image, uint16_t *lcd_buffer, vec2 const *src_pos, vec2 const *dst_pos, vec2 const *size)
 {
+    // lcd_buffer is fixed at LCD_WIDTH, LCD_HEIGHT !
+
     uint16_t *dst = lcd_buffer + dst_pos->x + dst_pos->y * LCD_WIDTH;
     uint16_t *src = source_image->pixel_data + src_pos->x + src_pos->y * source_image->width;
     for(int y = 0; y < size->y; ++y) {
@@ -80,11 +105,13 @@ void image_blit_noclip(image_t const *source_image, uint16_t *lcd_buffer, vec2_t
     }
 }
 
-void image_blit(image_t const *source_image, uint16_t *lcd_buffer, vec2_t const *src_pos, vec2_t const *dst_pos, vec2_t const *size)
+//////////////////////////////////////////////////////////////////////
+
+void image_blit(image_t const *source_image, uint16_t *lcd_buffer, vec2 const *src_pos, vec2 const *dst_pos, vec2 const *size)
 {
-    vec2_t sz = *size;
-    vec2_t s = *src_pos;
-    vec2_t d = *dst_pos;
+    vec2 sz = *size;
+    vec2 s = *src_pos;
+    vec2 d = *dst_pos;
 
     if(d.x < 0) {
         sz.x += d.x;
@@ -119,7 +146,9 @@ void image_blit(image_t const *source_image, uint16_t *lcd_buffer, vec2_t const 
     image_blit_noclip(source_image, lcd_buffer, &s, &d, &sz);
 }
 
-void image_fillrect_noclip(uint16_t *lcd_buffer, vec2_t const *topleft, vec2_t const *size, uint16_t pixel)
+//////////////////////////////////////////////////////////////////////
+
+void image_fillrect_noclip(uint16_t *lcd_buffer, vec2 const *topleft, vec2 const *size, uint16_t pixel)
 {
     pixel = (pixel >> 8) | (pixel << 8);
     uint16_t *dst = lcd_buffer + topleft->x + topleft->y * LCD_WIDTH;
@@ -132,10 +161,12 @@ void image_fillrect_noclip(uint16_t *lcd_buffer, vec2_t const *topleft, vec2_t c
     }
 }
 
-void image_fillrect(uint16_t *lcd_buffer, vec2_t const *topleft, vec2_t const *size, uint16_t pixel)
+//////////////////////////////////////////////////////////////////////
+
+void image_fillrect(uint16_t *lcd_buffer, vec2 const *topleft, vec2 const *size, uint16_t pixel)
 {
-    vec2_t tl = *topleft;
-    vec2_t sz = *size;
+    vec2 tl = *topleft;
+    vec2 sz = *size;
     if(tl.x < 0) {
         sz.x += tl.x;
         tl.x = 0;

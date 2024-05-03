@@ -16,7 +16,6 @@ extern "C" {
 typedef enum
 {
     PERIPH_MYWIFI_UNCHANGE = 0, /*!< No event */
-    PERIPH_MYWIFI_SHOW_QR_CODE,
     PERIPH_MYWIFI_CONNECTED,
     PERIPH_MYWIFI_DISCONNECTED,    // etc
 

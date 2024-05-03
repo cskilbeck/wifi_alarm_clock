@@ -48,8 +48,8 @@ static char const *TAG = "lcd";
 #define LEDC_MODE LEDC_LOW_SPEED_MODE
 #define LEDC_OUTPUT_IO PIN_NUM_BCKL
 #define LEDC_CHANNEL LEDC_CHANNEL_0
-#define LEDC_DUTY_RES LEDC_TIMER_13_BIT    // Set duty resolution to 13 bits
-#define LEDC_FREQUENCY 4000                // Frequency in Hertz. Set frequency at 4 kHz
+#define LEDC_DUTY_RES LEDC_TIMER_13_BIT    // duty resolution 13 bits
+#define LEDC_FREQUENCY 4000                // 4 kHz
 
 //////////////////////////////////////////////////////////////////////
 
@@ -66,8 +66,6 @@ namespace
     typedef struct spi_callback_user_data_s spi_callback_user_data_t;
 
     DMA_ATTR uint16_t lcd_buffer[LCD_WIDTH * LCD_HEIGHT];
-
-    int lcd_backlight = 0;
 
     SemaphoreHandle_t lcd_buffer_semaphore;
 
@@ -319,7 +317,7 @@ esp_err_t lcd_init()
 
     // Initialize non-SPI GPIOs
     gpio_config_t io_conf = {};
-    io_conf.pin_bit_mask = ((1ULL << PIN_NUM_DC) | (1ULL << PIN_NUM_RST));
+    io_conf.pin_bit_mask = (1ULL << PIN_NUM_DC) | (1ULL << PIN_NUM_RST);
     io_conf.mode = GPIO_MODE_OUTPUT;
     io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
     gpio_config(&io_conf);
@@ -387,7 +385,7 @@ esp_err_t lcd_init()
         pixels += num_lines * LCD_WIDTH;
     }
 
-    memset(lcd_buffer, 0xf0, sizeof(lcd_buffer));
+    memset(lcd_buffer, COLOR_BLACK, sizeof(lcd_buffer));
 
     lcd_update();
 
@@ -398,7 +396,6 @@ esp_err_t lcd_init()
 
 esp_err_t lcd_update()
 {
-    // take the buffer mutex, the dma callback wil release it
     while(num_dma_transactions_in_flight != 0) {
         ESP_LOGI(TAG, "Waiting for dma");
         vTaskDelay(1);
@@ -416,8 +413,7 @@ esp_err_t lcd_update()
 
 esp_err_t lcd_set_backlight(uint32_t brightness_0_8191)
 {
-    lcd_backlight = brightness_0_8191;
-    ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, lcd_backlight));
+    ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, brightness_0_8191));
     ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
     return ESP_OK;
 }

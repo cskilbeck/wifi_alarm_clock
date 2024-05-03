@@ -1,4 +1,5 @@
-// 96 glyphs
+// FONT: Cascadia_font has 95 graphics
+
 // struct font_graphic {
 //     int8_t offset_x;
 //     int8_t offset_y;
@@ -7,7 +8,8 @@
 //     uint8_t width;
 //     uint8_t height;
 // };
-// struct font {
+
+// struct font_data {
 //     font_graphic *graphics;
 //     int16_t *lookup;
 //     uint8_t *advance;
@@ -16,7 +18,8 @@
 //     int num_lookups;
 //     int num_advances;
 // };
-font_graphic Cascadia_font_graphics[] = {
+
+font_graphic Cascadia_font_graphics[95] = {
     { 4, 9, 138, 46, 5, 15 },
     { 3, 9, 34, 51, 7, 7 },
     { 1, 9, 177, 31, 11, 15 },
@@ -113,6 +116,7 @@ font_graphic Cascadia_font_graphics[] = {
     { 1, 14, 154, 57, 11, 6 },
     { 1, 5, 118, 0, 7, 18 },
 };
+
 int16_t Cascadia_font_lookup[256] = {
      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -131,6 +135,7 @@ int16_t Cascadia_font_lookup[256] = {
      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 };
+
 uint8_t Cascadia_font_advance[256] = {
       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
@@ -149,7 +154,8 @@ uint8_t Cascadia_font_advance[256] = {
       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
 };
-font Cascadia_font = {
+
+font_data Cascadia_font = {
     Cascadia_font_graphics,
     Cascadia_font_lookup,
     Cascadia_font_advance,
@@ -158,3 +164,6 @@ font Cascadia_font = {
     256, // num_lookups
     256 // num_advances
 };
+
+extern const uint8_t Cascadia_png_start[] asm("_binary_Cascadia0_png_start");
+extern const uint8_t Cascadia_png_end[] asm("_binary_Cascadia0_png_end");

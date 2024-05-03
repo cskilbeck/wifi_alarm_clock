@@ -1,3 +1,5 @@
+//////////////////////////////////////////////////////////////////////
+
 #pragma once
 
 #if defined(__cplusplus)
@@ -6,6 +8,8 @@ extern "C" {
 
 #include <stdint.h>
 #include <esp_err.h>
+
+//////////////////////////////////////////////////////////////////////
 
 typedef struct _font_graphic
 {
@@ -17,7 +21,9 @@ typedef struct _font_graphic
     uint8_t height;
 } font_graphic;
 
-typedef struct _font
+//////////////////////////////////////////////////////////////////////
+
+typedef struct font_data
 {
     font_graphic *graphics;
     int16_t *lookup;
@@ -26,14 +32,32 @@ typedef struct _font
     int num_graphics;
     int num_lookup;
     int num_advances;
-} font;
+} font_data;
 
-void font_drawtext(font *fnt, image_t *src_image, uint16_t *lcd_buffer, vec2_t const *pos, uint8_t const *text, uint16_t back_color);
+struct font_t;
 
-void font_measure_string(font *fnt, uint8_t const *text, vec2_t *size);
+typedef struct font_t *font_handle_t;
+
+//////////////////////////////////////////////////////////////////////
+
+esp_err_t font_init(font_data const *fnt, char const *name, uint8_t const *png_start, uint8_t const *png_end, font_handle_t *handle);
+
+void font_drawtext(font_handle_t fnt, uint16_t *lcd_buffer, vec2 const *pos, uint8_t const *text, uint16_t back_color);
+
+void font_measure_string(font_handle_t fnt, uint8_t const *text, vec2 *size);
+
+//////////////////////////////////////////////////////////////////////
+
+#define __FONT_JOIN2(x, y) x##y
+#define __FONT_JOIN(x, y) __FONT_JOIN2(x, y)
+
+#define FONT_INIT(fontname, handle) \
+    font_init(&__FONT_JOIN(fontname, _font), #fontname, __FONT_JOIN(fontname, _png_start), __FONT_JOIN(fontname, _png_end), handle)
+
+// E.G. esp_err_t ret = FONT_INIT(Cascadia, &my_font_handle)
+
+//////////////////////////////////////////////////////////////////////
 
 #if defined(__cplusplus)
 }
 #endif
-
-// h/v-padding, h/v-alignment

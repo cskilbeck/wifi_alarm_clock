@@ -37,7 +37,6 @@
 #include "image.h"
 #include "font.h"
 #include "stream.h"
-#include "user_main.h"
 #include "assets.h"
 
 static char const *TAG = "stream";
@@ -103,34 +102,6 @@ static void stream_task(void *)
 
     audio_board_mywifi_init(set);
 
-    // vTaskDelay(10);
-
-    // ESP_LOGI(TAG, "[ 3 ] Start and wait for Wi-Fi network");
-    // vTaskDelay(10);
-
-    //     periph_wifi_cfg_t wifi_cfg = {};
-    //     esp_periph_handle_t wifi_handle = periph_wifi_init(&wifi_cfg);
-
-    // #if defined(CONFIG_BTDM_CTRL_MODE_BLE_ONLY)
-    //     ESP_LOGI(TAG, "CONFIG_BTDM_CTRL_MODE_BLE_ONLY");
-    //     vTaskDelay(10);
-    // #endif
-
-    //     ESP_LOGI(TAG, "[ 3.2 ] Start and wait for Wi-Fi network");
-    //     vTaskDelay(10);
-
-    //     esp_periph_start(set, wifi_handle);
-
-    //     ESP_LOGI(TAG, "[ 3.3 ] Start and wait for Wi-Fi network");
-    //     vTaskDelay(10);
-
-    //     periph_wifi_config_start(wifi_handle, WIFI_CONFIG_BLUEFI);
-
-    //     ESP_LOGI(TAG, "[ 3.4 ] Start and wait for Wi-Fi network");
-    //     vTaskDelay(10);
-
-    //     periph_wifi_wait_for_connected(wifi_handle, portMAX_DELAY);
-
     audio_event_iface_cfg_t evt_cfg = AUDIO_EVENT_IFACE_DEFAULT_CFG();
     audio_event_iface_handle_t evt = audio_event_iface_init(&evt_cfg);
 
@@ -146,20 +117,6 @@ static void stream_task(void *)
     // audio_element_set_uri(http_stream_reader, "http://media-ice.musicradio.com/LBCLondon.m3u");
     // audio_element_set_uri(http_stream_reader, "http://media-ice.musicradio.com/LBCUK.m3u");
     // audio_element_set_uri(http_stream_reader, "http://media-ice.musicradio.com/LBCUKMP3Low");
-    // audio_element_set_uri(
-    //     http_stream_reader,
-    //     "http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_radio_fourlw/bbc_radio_fourlw.sml/bbc_radio_fourlw-audio%3d96000.norewind.m3u8");
-
-    // audio_element_set_uri(http_stream_reader,
-    //                       "http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_radio_fourfm/bbc_radio_fourfm.isml/bbc_radio_fourfm-audio=320000.m3u8");
-
-    // audio_pipeline_run(pipeline);
-
-    // uint16_t *buffer;
-    // if(lcd_get_backbuffer(&buffer, portMAX_DELAY) == ESP_OK) {
-    //     memset(buffer, 0xff, LCD_WIDTH * LCD_HEIGHT * 2);
-    //     lcd_release_backbuffer_and_update();
-    // }
 
     while(1) {
         audio_event_iface_msg_t msg;
@@ -168,8 +125,6 @@ static void stream_task(void *)
         if(ret != ESP_OK) {
             continue;
         }
-
-        // ESP_LOGI(TAG, "MSG: %d", msg.source_type);
 
         if(msg.source_type == AUDIO_ELEMENT_TYPE_ELEMENT && msg.source == (void *)audio_decoder && msg.cmd == AEL_MSG_CMD_REPORT_MUSIC_INFO) {
             audio_element_info_t music_info = { 0 };
@@ -195,6 +150,21 @@ static void stream_task(void *)
         }
 
         if(msg.source_type == PERIPH_ID_MYWIFI) {
+            switch(msg.cmd) {
+            case PERIPH_MYWIFI_CONNECTED:
+                audio_element_set_uri(
+                    http_stream_reader,
+                    "http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_radio_fourfm/bbc_radio_fourfm.isml/bbc_radio_fourfm-audio=320000.m3u8");
+                audio_pipeline_run(pipeline);
+                break;
+            case PERIPH_MYWIFI_DISCONNECTED:
+                audio_pipeline_stop(pipeline);
+                audio_pipeline_wait_for_stop(pipeline);
+                audio_pipeline_terminate(pipeline);
+                audio_pipeline_reset_ringbuffer(pipeline);
+                audio_pipeline_reset_elements(pipeline);
+                break;
+            }
             ESP_LOGI(TAG, "MYWIFI says %d", msg.cmd);
         }
 
@@ -217,51 +187,6 @@ static void stream_task(void *)
                     volume = -64;
                 }
                 alc_volume_setup_set_volume(volume_control, volume);
-            }
-        }
-
-        if((msg.source_type == PERIPH_ID_TOUCH || msg.source_type == PERIPH_ID_BUTTON || msg.source_type == PERIPH_ID_ADC_BTN) &&
-           (msg.cmd == PERIPH_TOUCH_TAP || msg.cmd == PERIPH_BUTTON_PRESSED || msg.cmd == PERIPH_ADC_BUTTON_PRESSED)) {
-            if((int)msg.data == get_input_play_id()) {
-                ESP_LOGI(TAG, "[ * ] [Play] touch tap event");
-                audio_element_state_t el_state = audio_element_get_state(i2s_stream_writer);
-                switch(el_state) {
-                case AEL_STATE_INIT:
-                    ESP_LOGI(TAG, "[ * ] Starting audio pipeline");
-                    audio_pipeline_run(pipeline);
-                    break;
-                case AEL_STATE_RUNNING:
-                    ESP_LOGI(TAG, "[ * ] Pausing audio pipeline");
-                    audio_pipeline_pause(pipeline);
-                    break;
-                case AEL_STATE_PAUSED:
-                    ESP_LOGI(TAG, "[ * ] Resuming audio pipeline");
-                    audio_pipeline_resume(pipeline);
-                    break;
-                case AEL_STATE_FINISHED:
-                    ESP_LOGI(TAG, "[ * ] Rewinding audio pipeline");
-                    audio_pipeline_reset_ringbuffer(pipeline);
-                    audio_pipeline_reset_elements(pipeline);
-                    audio_pipeline_change_state(pipeline, AEL_STATE_INIT);
-                    audio_pipeline_run(pipeline);
-                    break;
-                default:
-                    ESP_LOGI(TAG, "[ * ] Not supported state %d", el_state);
-                }
-            } else if((int)msg.data == get_input_set_id()) {
-                ESP_LOGI(TAG, "[ * ] [Set] touch tap event");
-                ESP_LOGI(TAG, "[ * ] Stopping audio pipeline");
-                break;
-            } else if((int)msg.data == get_input_mode_id()) {
-                ESP_LOGI(TAG, "[ * ] [mode] tap event");
-                audio_pipeline_stop(pipeline);
-                audio_pipeline_wait_for_stop(pipeline);
-                audio_pipeline_terminate(pipeline);
-                audio_pipeline_reset_ringbuffer(pipeline);
-                audio_pipeline_reset_elements(pipeline);
-                audio_pipeline_run(pipeline);
-            } else if((int)msg.data == get_input_volup_id()) {
-            } else if((int)msg.data == get_input_voldown_id()) {
             }
         }
     }
@@ -291,24 +216,5 @@ esp_err_t stream_init(void)
     if(xTaskCreatePinnedToCore(stream_task, "stream", 4096, NULL, 20, &stream_task_handle, 1) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
-    return ESP_OK;
-}
-
-//////////////////////////////////////////////////////////////////////
-
-esp_err_t stream_play(char const *url)
-{
-    // audio_element_set_uri(http_stream_reader,
-    //                       "http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_radio_fourfm/bbc_radio_fourfm.isml/bbc_radio_fourfm-audio=320000.m3u8");
-
-    // audio_pipeline_run(pipeline);
-
-    return ESP_OK;
-}
-
-//////////////////////////////////////////////////////////////////////
-
-esp_err_t stream_stop()
-{
     return ESP_OK;
 }

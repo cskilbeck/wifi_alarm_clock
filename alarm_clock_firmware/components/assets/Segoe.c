@@ -1,4 +1,5 @@
-// 96 glyphs
+// FONT: Segoe_font has 95 graphics
+
 // struct font_graphic {
 //     int8_t offset_x;
 //     int8_t offset_y;
@@ -7,7 +8,8 @@
 //     uint8_t width;
 //     uint8_t height;
 // };
-// struct font {
+
+// struct font_data {
 //     font_graphic *graphics;
 //     int16_t *lookup;
 //     uint8_t *advance;
@@ -16,7 +18,8 @@
 //     int num_lookups;
 //     int num_advances;
 // };
-font_graphic Segoe_font_graphics[] = {
+
+font_graphic Segoe_font_graphics[95] = {
     { 2, 12, 27, 67, 7, 20 },
     { 2, 12, 87, 103, 12, 5 },
     { 1, 12, 144, 83, 16, 18 },
@@ -113,6 +116,7 @@ font_graphic Segoe_font_graphics[] = {
     { 3, 20, 239, 102, 15, 7 },
     { 2, 6, 15, 0, 9, 27 },
 };
+
 int16_t Segoe_font_lookup[256] = {
      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -131,6 +135,7 @@ int16_t Segoe_font_lookup[256] = {
      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 };
+
 uint8_t Segoe_font_advance[256] = {
       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
@@ -149,7 +154,8 @@ uint8_t Segoe_font_advance[256] = {
       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
       0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
 };
-font Segoe_font = {
+
+font_data Segoe_font = {
     Segoe_font_graphics,
     Segoe_font_lookup,
     Segoe_font_advance,
@@ -158,3 +164,6 @@ font Segoe_font = {
     256, // num_lookups
     256 // num_advances
 };
+
+extern const uint8_t Segoe_png_start[] asm("_binary_Segoe0_png_start");
+extern const uint8_t Segoe_png_end[] asm("_binary_Segoe0_png_end");

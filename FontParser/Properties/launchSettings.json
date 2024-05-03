@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "FontParser": {
+      "commandName": "Project",
+      "commandLineArgs": "E:\\dev\\LCD_Clock\\data\\Digits.bitmapfont"
+    }
+  }
+}
