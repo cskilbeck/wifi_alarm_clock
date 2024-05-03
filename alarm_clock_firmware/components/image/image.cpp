@@ -1,12 +1,11 @@
 #include <freertos/FreeRTOS.h>
 
-#include <esp_mem.h>
 #include <esp_log.h>
 #include <esp_heap_caps.h>
 
 #include "pngle.h"
 #include "image.h"
-#include "lcd.h"
+#include "lcd_gc9a01.h"
 
 static char const *TAG = "image";
 

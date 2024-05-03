@@ -1,5 +1,5 @@
 # Edit following two lines to set component requirements (see docs)
-set(COMPONENT_REQUIRES)
+set(COMPONENT_REQUIRES wifi_provisioning lcd_gc9a01)
 set(COMPONENT_PRIV_REQUIRES audio_sal audio_hal esp_dispatcher esp_peripherals display_service)
 
 if(CONFIG_AUDIO_BOARD_CUSTOM)
@@ -11,6 +11,8 @@ set(COMPONENT_SRCS
 ./my_codec_driver/new_codec.c
 ./my_board_v1_0/periph_encoder.c
 ./my_board_v1_0/encoder.cpp
+./my_board_v1_0/periph_mywifi.c
+./my_board_v1_0/mywifi.c
 )
 endif()
 

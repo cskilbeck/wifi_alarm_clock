@@ -1,6 +1,5 @@
 #include <freertos/FreeRTOS.h>
 
-#include <esp_mem.h>
 #include <esp_log.h>
 #include <esp_heap_caps.h>
 

@@ -1,0 +1,20 @@
+menu "BLE Provisioning"
+
+    config BT_BLE_BLUFI_ENABLE
+        bool "BLUFI enabled"
+        default y
+
+    config BTDM_CTRL_MODE_BLE_ONLY
+        bool "BLE/BTDM Control mode - BLE only?"
+        default y
+
+    config BTDM_CTRL_MODE_BR_EDR_ONLY
+        bool "BTDM_CTRL_MODE_BR_EDR_ONLY"
+        default n
+
+    config BTDM_CTRL_MODE_BTDM
+        bool "BTDM_CTRL_MODE_BTDM"
+        default n
+
+endmenu
+

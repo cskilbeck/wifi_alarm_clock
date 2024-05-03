@@ -13,17 +13,17 @@
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <freertos/semphr.h>
 #include <freertos/event_groups.h>
 
 #include <esp_err.h>
 #include <esp_log.h>
 #include "esp_system.h"
 
-#include "driver/spi_master.h"
+#include <driver/spi_master.h>
 #include "driver/gpio.h"
 #include "driver/ledc.h"
-#include "led.h"
-#include "lcd.h"
+#include "lcd_gc9a01.h"
 
 static char const *TAG = "lcd";
 
@@ -67,7 +67,7 @@ namespace
 
     DMA_ATTR uint16_t lcd_buffer[LCD_WIDTH * LCD_HEIGHT];
 
-    int lcd_backlight = 8191;
+    int lcd_backlight = 0;
 
     SemaphoreHandle_t lcd_buffer_semaphore;
 
@@ -183,9 +183,6 @@ namespace
     void spi_callback_dma_complete()
     {
         num_dma_transactions_in_flight -= 1;
-        if(num_dma_transactions_in_flight == 0) {
-            led_set_on();
-        }
     }
 
     //////////////////////////////////////////////////////////////////////
@@ -406,8 +403,6 @@ esp_err_t lcd_update()
         ESP_LOGI(TAG, "Waiting for dma");
         vTaskDelay(1);
     }
-
-    led_set_off();
 
     num_dma_transactions_in_flight = num_transfers;
     for(int i = 0; i < num_transfers; ++i) {

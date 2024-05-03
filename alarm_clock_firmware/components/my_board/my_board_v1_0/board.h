@@ -108,6 +108,8 @@ esp_err_t audio_board_deinit(audio_board_handle_t audio_board);
 
 esp_err_t audio_board_encoder_init(esp_periph_set_handle_t set);
 
+esp_err_t audio_board_mywifi_init(esp_periph_set_handle_t set);
+
 #ifdef __cplusplus
 }
 #endif

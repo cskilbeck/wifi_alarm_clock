@@ -30,13 +30,10 @@
 #include "periph_wifi.h"
 #include "periph_encoder.h"
 
-#include "wifi_service.h"
-
 #include "board.h"
 
 #include "led.h"
-#include "lcd.h"
-#include "wifi.h"
+#include "lcd_gc9a01.h"
 #include "image.h"
 #include "font.h"
 #include "stream.h"
@@ -48,21 +45,6 @@ static char const *TAG = "stream";
 //////////////////////////////////////////////////////////////////////
 
 static TaskHandle_t stream_task_handle;
-
-uint16_t g_pixel = 1;
-
-//////////////////////////////////////////////////////////////////////
-
-// static void draw_blob(uint16_t *buffer, int x, int y, int w, int h, uint16_t color)
-// {
-//     uint16_t *p = buffer + y * LCD_WIDTH + x;
-//     for(int y = 0; y < h; ++y) {
-//         for(int x = 0; x < w; ++x) {
-//             p[x] = color;
-//         }
-//         p += LCD_WIDTH;
-//     }
-// }
 
 static void stream_task(void *)
 {
@@ -118,6 +100,36 @@ static void stream_task(void *)
     ESP_LOGI(TAG, "init encoder?");
 
     audio_board_encoder_init(set);
+
+    audio_board_mywifi_init(set);
+
+    // vTaskDelay(10);
+
+    // ESP_LOGI(TAG, "[ 3 ] Start and wait for Wi-Fi network");
+    // vTaskDelay(10);
+
+    //     periph_wifi_cfg_t wifi_cfg = {};
+    //     esp_periph_handle_t wifi_handle = periph_wifi_init(&wifi_cfg);
+
+    // #if defined(CONFIG_BTDM_CTRL_MODE_BLE_ONLY)
+    //     ESP_LOGI(TAG, "CONFIG_BTDM_CTRL_MODE_BLE_ONLY");
+    //     vTaskDelay(10);
+    // #endif
+
+    //     ESP_LOGI(TAG, "[ 3.2 ] Start and wait for Wi-Fi network");
+    //     vTaskDelay(10);
+
+    //     esp_periph_start(set, wifi_handle);
+
+    //     ESP_LOGI(TAG, "[ 3.3 ] Start and wait for Wi-Fi network");
+    //     vTaskDelay(10);
+
+    //     periph_wifi_config_start(wifi_handle, WIFI_CONFIG_BLUEFI);
+
+    //     ESP_LOGI(TAG, "[ 3.4 ] Start and wait for Wi-Fi network");
+    //     vTaskDelay(10);
+
+    //     periph_wifi_wait_for_connected(wifi_handle, portMAX_DELAY);
 
     audio_event_iface_cfg_t evt_cfg = AUDIO_EVENT_IFACE_DEFAULT_CFG();
     audio_event_iface_handle_t evt = audio_event_iface_init(&evt_cfg);
@@ -187,17 +199,9 @@ static void stream_task(void *)
             switch(msg.cmd) {
             case PERIPH_ENCODER_CLOCKWISE:
                 direction = 4;
-                g_pixel <<= 1;
-                if(g_pixel == 0) {
-                    g_pixel = 1;
-                }
                 break;
             case PERIPH_ENCODER_COUNTER_CLOCKWISE:
                 direction = -4;
-                g_pixel >>= 1;
-                if(g_pixel == 0) {
-                    g_pixel = 0x8000;
-                }
                 break;
             }
             // int old_volume = volume;
@@ -208,20 +212,7 @@ static void stream_task(void *)
                 } else if(volume < -64) {
                     volume = -64;
                 }
-                // alc_volume_setup_set_volume(volume_control, volume);
-                // uint16_t *buffer;
-                // if(lcd_get_backbuffer(&buffer, portMAX_DELAY) == ESP_OK) {
-                //     draw_blob(buffer, 115, 88 - old_volume, 10, 10, 0xffff);
-                //     draw_blob(buffer, 115, 88 - volume, 10, 10, 0);
-                //     lcd_release_backbuffer_and_update();
-                // }
-                uint16_t *lcd_buffer;
-                if(lcd_get_backbuffer(&lcd_buffer, portMAX_DELAY) == ESP_OK) {
-                    // image_blit(&font_image, lcd_buffer, 0, 0, 20, 20, font_image.width, font_image.height);
-                    // image_fillrect(lcd_buffer, 20, 20, 128, 128, g_pixel);
-                    ESP_LOGI(TAG, "%04x", g_pixel);
-                    lcd_release_backbuffer_and_update();
-                }
+                alc_volume_setup_set_volume(volume_control, volume);
             }
         }
 
