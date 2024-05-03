@@ -105,8 +105,7 @@ esp_err_t audio_board_mywifi_init(esp_periph_set_handle_t set)
     ESP_LOGI(TAG, "audio_board_encoder_init");
 
     esp_err_t ret = ESP_OK;
-    periph_mywifi_cfg_t mywifi_cfg = {};
-    esp_periph_handle_t mywifi_handle = periph_mywifi_init(&mywifi_cfg);
+    esp_periph_handle_t mywifi_handle = periph_mywifi_init();
     AUDIO_NULL_CHECK(TAG, mywifi_handle, return ESP_ERR_ADF_MEMORY_LACK);
     ret = esp_periph_start(set, mywifi_handle);
     return ret;

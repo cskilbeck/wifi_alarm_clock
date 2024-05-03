@@ -417,7 +417,6 @@ esp_err_t lcd_update()
 esp_err_t lcd_set_backlight(uint32_t brightness_0_8191)
 {
     lcd_backlight = brightness_0_8191;
-    ESP_LOGI(TAG, "Setting backlight to %d", lcd_backlight);
     ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, lcd_backlight));
     ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
     return ESP_OK;

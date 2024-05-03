@@ -27,7 +27,7 @@
 #include "periph_touch.h"
 #include "periph_adc_button.h"
 #include "periph_button.h"
-#include "periph_wifi.h"
+#include "periph_mywifi.h"
 #include "periph_encoder.h"
 
 #include "board.h"
@@ -150,10 +150,10 @@ static void stream_task(void *)
     //     http_stream_reader,
     //     "http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_radio_fourlw/bbc_radio_fourlw.sml/bbc_radio_fourlw-audio%3d96000.norewind.m3u8");
 
-    audio_element_set_uri(http_stream_reader,
-                          "http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_radio_fourfm/bbc_radio_fourfm.isml/bbc_radio_fourfm-audio=320000.m3u8");
+    // audio_element_set_uri(http_stream_reader,
+    //                       "http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_radio_fourfm/bbc_radio_fourfm.isml/bbc_radio_fourfm-audio=320000.m3u8");
 
-    audio_pipeline_run(pipeline);
+    // audio_pipeline_run(pipeline);
 
     // uint16_t *buffer;
     // if(lcd_get_backbuffer(&buffer, portMAX_DELAY) == ESP_OK) {
@@ -192,6 +192,10 @@ static void stream_task(void *)
             audio_pipeline_reset_items_state(pipeline);
             audio_pipeline_run(pipeline);
             continue;
+        }
+
+        if(msg.source_type == PERIPH_ID_MYWIFI) {
+            ESP_LOGI(TAG, "MYWIFI says %d", msg.cmd);
         }
 
         if(msg.source_type == PERIPH_ID_ENCODER) {

@@ -1,33 +1,6 @@
-/*
- * ESPRESSIF MIT License
- *
- * Copyright (c) 2018 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
- *
- * Permission is hereby granted for use on all ESPRESSIF SYSTEMS products, in which case,
- * it is free of charge, to any person obtaining a copy of this software and associated
- * documentation files (the "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished
- * to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all copies or
- * substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- */
-
-#ifndef __PERIPH_MYWIFI_H
-#define __PERIPH_MYWIFI_H
+#pragma once
 
 #include "esp_peripherals.h"
-#include "mywifi.h"
-#include "../../../managed_components/espressif__qrcode/include/qrcode.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,14 +10,17 @@ extern "C" {
 #define PERIPH_ID_MYWIFI (PERIPH_ID_LCD + 2)
 
 /**
- * @brief   mywifi peripheral configuration
+ * @brief      mywifi event id
  */
-typedef struct
+
+typedef enum
 {
-    mywifi_show_qr_code on_show_qr_code;
+    PERIPH_MYWIFI_UNCHANGE = 0, /*!< No event */
+    PERIPH_MYWIFI_SHOW_QR_CODE,
+    PERIPH_MYWIFI_CONNECTED,
+    PERIPH_MYWIFI_DISCONNECTED,    // etc
 
-} periph_mywifi_cfg_t;
-
+} mywifi_event_id_t;
 
 /**
  * @brief      Create the mywifi peripheral handle for esp_peripherals.
@@ -55,10 +31,8 @@ typedef struct
  *
  * @return     The esp peripheral handle
  */
-esp_periph_handle_t periph_mywifi_init(periph_mywifi_cfg_t *mywifi_cfg);
+esp_periph_handle_t periph_mywifi_init();
 
 #ifdef __cplusplus
 }
 #endif
-
-#endif    //__PERIPH_MYWIFI_H

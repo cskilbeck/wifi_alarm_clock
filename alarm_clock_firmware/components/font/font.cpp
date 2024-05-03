@@ -30,8 +30,6 @@ void font_drawtext(font *fnt, image_t *src_image, uint16_t *lcd_buffer, vec2_t c
 
         int glyph_index = fnt->lookup[c];
 
-        ESP_LOGI(TAG, "%c: index %d", c, glyph_index);
-
         if(glyph_index < 0) {
             vec2_t fillsize = { char_width, char_height };
             image_fillrect(lcd_buffer, &curpos, &fillsize, back_color);
@@ -41,8 +39,6 @@ void font_drawtext(font *fnt, image_t *src_image, uint16_t *lcd_buffer, vec2_t c
             vec2_t offset = { graphic.offset_x, graphic.offset_y };
             vec2_t dst = { curpos.x + offset.x, curpos.y + offset.y };
             vec2_t size = { graphic.width, graphic.height };
-
-            ESP_LOGI(TAG, "%c %d,%d (%dx%d)", c, src.x, src.y, size.x, size.y);
 
             // top
             if(offset.y != 0) {
