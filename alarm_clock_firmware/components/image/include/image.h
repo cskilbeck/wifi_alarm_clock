@@ -8,14 +8,7 @@ extern "C" {
 
 #include <stdint.h>
 #include <esp_err.h>
-
-//////////////////////////////////////////////////////////////////////
-
-typedef struct vec2
-{
-    int x;
-    int y;
-} vec2;
+#include "util.h"
 
 typedef struct image
 {
@@ -26,11 +19,13 @@ typedef struct image
 
 //////////////////////////////////////////////////////////////////////
 
-esp_err_t image_decode_png(image_t *image, uint8_t const *png_data, size_t png_size);
+image_t const *image_get(int image_id);
 
-void image_blit(image_t const *source_image, uint16_t *lcd_buffer, vec2 const *src_pos, vec2 const *dst_pos, vec2 const *size);
+esp_err_t image_decode_png(int *out_image_id, uint8_t const *png_data, size_t png_size);
 
-void image_blit_noclip(image_t const *source_image, uint16_t *lcd_buffer, vec2 const *src_pos, vec2 const *dst_pos, vec2 const *size);
+void image_blit(int source_image_id, uint16_t *lcd_buffer, vec2 const *src_pos, vec2 const *dst_pos, vec2 const *size);
+
+void image_blit_noclip(int source_image_id, uint16_t *lcd_buffer, vec2 const *src_pos, vec2 const *dst_pos, vec2 const *size);
 
 void image_fillrect(uint16_t *lcd_buffer, vec2 const *topleft, vec2 const *size, uint16_t pixel);
 

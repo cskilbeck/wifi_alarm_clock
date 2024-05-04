@@ -5,6 +5,7 @@
 #include <esp_log.h>
 #include <esp_heap_caps.h>
 
+#include "util.h"
 #include "image.h"
 #include "font.h"
 
@@ -15,7 +16,7 @@ static char const *TAG = "font";
 typedef struct font_t
 {
     char const *name;
-    image_t image;
+    int image_index;
     font_data const *font_struct;
 } font_t;
 
@@ -24,10 +25,12 @@ typedef struct font_t
 void font_drawtext(font_handle_t fnt, uint16_t *lcd_buffer, vec2 const *pos, uint8_t const *text, uint16_t back_color)
 {
     assert(fnt != nullptr);
-    assert(fnt->image.pixel_data != nullptr);
+    assert(fnt->image_index != 0);
     assert(lcd_buffer != nullptr);
     assert(pos != nullptr);
     assert(text != nullptr);
+
+    image_t const *img = image_get(fnt->image_index);
 
     font_data const *f = fnt->font_struct;
 
@@ -84,7 +87,7 @@ void font_drawtext(font_handle_t fnt, uint16_t *lcd_buffer, vec2 const *pos, uin
                 image_fillrect(lcd_buffer, &fillpos, &fillsize, back_color);
             }
 
-            image_blit(&fnt->image, lcd_buffer, &src, &dst, &size);
+            image_blit(fnt->image_index, lcd_buffer, &src, &dst, &size);
         }
         curpos.x += char_width;
     }
@@ -126,7 +129,7 @@ esp_err_t font_init(font_data const *fnt, char const *name, uint8_t const *png_s
 
     new_font->name = name;
     new_font->font_struct = fnt;
-    esp_err_t ret = image_decode_png(&new_font->image, png_start, png_end - png_start);
+    esp_err_t ret = image_decode_png(&new_font->image_index, png_start, png_end - png_start);
 
     if(ret == ESP_OK) {
         *handle = new_font;

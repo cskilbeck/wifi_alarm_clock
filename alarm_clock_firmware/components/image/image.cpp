@@ -6,7 +6,9 @@
 #include <esp_heap_caps.h>
 
 #include "pngle.h"
+#include "util.h"
 #include "image.h"
+#include "util.h"
 #include "lcd_gc9a01.h"
 
 static char const *TAG = "image";
@@ -15,19 +17,10 @@ static char const *TAG = "image";
 
 namespace
 {
-    //////////////////////////////////////////////////////////////////////
+    int constexpr MAX_IMAGES = 128;
 
-    template <typename T> T min(T const &a, T const &b)
-    {
-        return a < b ? a : b;
-    }
-
-    //////////////////////////////////////////////////////////////////////
-
-    template <typename T> T max(T const &a, T const &b)
-    {
-        return a > b ? a : b;
-    }
+    image_t images[MAX_IMAGES];
+    int num_images = 0;
 
     //////////////////////////////////////////////////////////////////////
 
@@ -64,7 +57,17 @@ namespace
 
 //////////////////////////////////////////////////////////////////////
 
-esp_err_t image_decode_png(image_t *image, uint8_t const *png_data, size_t png_size)
+image_t const *image_get(int image_id)
+{
+    if(image_id <= 0 || image_id > num_images) {
+        return NULL;
+    }
+    return images + image_id;
+}
+
+//////////////////////////////////////////////////////////////////////
+
+esp_err_t image_decode_png(int *out_image_id, uint8_t const *png_data, size_t png_size)
 {
     pngle_t *pngle = pngle_new();
 
@@ -72,7 +75,11 @@ esp_err_t image_decode_png(image_t *image, uint8_t const *png_data, size_t png_s
         return ESP_ERR_NO_MEM;
     }
 
-    pngle_set_user_data(pngle, image);
+    int new_image_id = num_images + 1;
+
+    image_t *new_image = images + new_image_id;
+
+    pngle_set_user_data(pngle, new_image);
     pngle_set_init_callback(pngle, on_init);
     pngle_set_draw_callback(pngle, setpixel);
 
@@ -83,14 +90,22 @@ esp_err_t image_decode_png(image_t *image, uint8_t const *png_data, size_t png_s
         return ESP_FAIL;
     }
     pngle_destroy(pngle);
+
+    ESP_LOGI(TAG, "Decoded PNG id %d (%dx%d)", new_image_id, new_image->width, new_image->height);
+
+    *out_image_id = new_image_id;
+    num_images = new_image_id;
+
     return ESP_OK;
 }
 
 //////////////////////////////////////////////////////////////////////
 
-void image_blit_noclip(image_t const *source_image, uint16_t *lcd_buffer, vec2 const *src_pos, vec2 const *dst_pos, vec2 const *size)
+void image_blit_noclip(int source_image_id, uint16_t *lcd_buffer, vec2 const *src_pos, vec2 const *dst_pos, vec2 const *size)
 {
     // lcd_buffer is fixed at LCD_WIDTH, LCD_HEIGHT !
+
+    image_t const *source_image = image_get(source_image_id);
 
     uint16_t *dst = lcd_buffer + dst_pos->x + dst_pos->y * LCD_WIDTH;
     uint16_t *src = source_image->pixel_data + src_pos->x + src_pos->y * source_image->width;
@@ -107,7 +122,7 @@ void image_blit_noclip(image_t const *source_image, uint16_t *lcd_buffer, vec2 c
 
 //////////////////////////////////////////////////////////////////////
 
-void image_blit(image_t const *source_image, uint16_t *lcd_buffer, vec2 const *src_pos, vec2 const *dst_pos, vec2 const *size)
+void image_blit(int source_image_id, uint16_t *lcd_buffer, vec2 const *src_pos, vec2 const *dst_pos, vec2 const *size)
 {
     vec2 sz = *size;
     vec2 s = *src_pos;
@@ -143,7 +158,7 @@ void image_blit(image_t const *source_image, uint16_t *lcd_buffer, vec2 const *s
             return;
         }
     }
-    image_blit_noclip(source_image, lcd_buffer, &s, &d, &sz);
+    image_blit_noclip(source_image_id, lcd_buffer, &s, &d, &sz);
 }
 
 //////////////////////////////////////////////////////////////////////

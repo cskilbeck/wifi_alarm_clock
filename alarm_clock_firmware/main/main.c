@@ -21,12 +21,9 @@
 #include "assets.h"
 #include "font.h"
 #include "assets.h"
-
 #include "lcd_gc9a01.h"
 
-static const char *TAG = "main";
-
-//////////////////////////////////////////////////////////////////////
+static char const *TAG = "main";
 
 #define ERASE_FLASH 0
 
@@ -36,6 +33,9 @@ void app_main(void)
 
     ESP_LOGI(TAG, "app_main");
 
+    led_init();
+    led_set_on();
+
     esp_err_t err = nvs_flash_init();
     if(err == ESP_ERR_NVS_NO_FREE_PAGES || ERASE_FLASH) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -43,22 +43,8 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(esp_netif_init());
 
-    led_init();
     lcd_init();
-
-    font_handle_t cascadia_font;
-    font_handle_t segoe_font;
-    font_handle_t digits_font;
-
-    ESP_ERROR_CHECK(FONT_INIT(Cascadia, &cascadia_font));
-    ESP_ERROR_CHECK(FONT_INIT(Segoe, &segoe_font));
-    ESP_ERROR_CHECK(FONT_INIT(Digits, &digits_font));
-
-    image_t blip;
-    image_decode_png(&blip, blip_png_start, blip_png_size);
-
-    image_t small_blip;
-    image_decode_png(&small_blip, small_blip_png_start, small_blip_png_size);
+    assets_init();
 
     uint16_t *lcd_buffer;
 
@@ -73,30 +59,30 @@ void app_main(void)
         vec2 text_pos = { (240 - text_size.x) / 2, (240 - text_size.y) / 2 };
         font_drawtext(digits_font, lcd_buffer, &text_pos, text, COLOR_BLACK);
 
+        image_t const *src_img = image_get(blip_image_id);
         for(int i = 0; i < 23; ++i) {
             float t = (float)i * M_TWOPI / 60.0f;
             float x = sinf(t) * 114 + 120;
             float y = 120 - cosf(t) * 114;
             vec2 src_pos = { 0, 0 };
-            image_t *src_img = &blip;
             vec2 size = { src_img->width, src_img->height };
             vec2 dst_pos = { (int)x, (int)y };
             dst_pos.x -= size.x / 2;
             dst_pos.y -= size.y / 2;
-            image_blit(src_img, lcd_buffer, &src_pos, &dst_pos, &size);
+            image_blit(blip_image_id, lcd_buffer, &src_pos, &dst_pos, &size);
         }
 
+        src_img = image_get(small_blip_image_id);
         for(int i = 0; i < 60; i += 5) {
             float t = (float)i * M_TWOPI / 60.0f;
             float x = sinf(t) * 104 + 120;
             float y = 120 - cosf(t) * 104;
             vec2 src_pos = { 0, 0 };
-            image_t *src_img = &small_blip;
             vec2 size = { src_img->width, src_img->height };
             vec2 dst_pos = { (int)x, (int)y };
             dst_pos.x -= size.x / 2;
             dst_pos.y -= size.y / 2;
-            image_blit(src_img, lcd_buffer, &src_pos, &dst_pos, &size);
+            image_blit(small_blip_image_id, lcd_buffer, &src_pos, &dst_pos, &size);
         }
 
         lcd_release_backbuffer_and_update();
@@ -115,6 +101,8 @@ void app_main(void)
         lcd_set_backlight(b);
         vTaskDelay(1);
     }
+
+    led_set_off();
 
     stream_init();
 }
