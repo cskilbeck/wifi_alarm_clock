@@ -101,7 +101,7 @@ esp_err_t image_decode_png(int *out_image_id, uint8_t const *png_data, size_t pn
 
 //////////////////////////////////////////////////////////////////////
 
-void image_blit_noclip(int source_image_id, uint16_t *lcd_buffer, vec2 const *src_pos, vec2 const *dst_pos, vec2 const *size)
+void image_blit_noclip(int source_image_id, uint16_t *lcd_buffer, vec2i const *src_pos, vec2i const *dst_pos, vec2i const *size)
 {
     // lcd_buffer is fixed at LCD_WIDTH, LCD_HEIGHT !
 
@@ -122,11 +122,11 @@ void image_blit_noclip(int source_image_id, uint16_t *lcd_buffer, vec2 const *sr
 
 //////////////////////////////////////////////////////////////////////
 
-void image_blit(int source_image_id, uint16_t *lcd_buffer, vec2 const *src_pos, vec2 const *dst_pos, vec2 const *size)
+void image_blit(int source_image_id, uint16_t *lcd_buffer, vec2i const *src_pos, vec2i const *dst_pos, vec2i const *size)
 {
-    vec2 sz = *size;
-    vec2 s = *src_pos;
-    vec2 d = *dst_pos;
+    vec2i sz = *size;
+    vec2i s = *src_pos;
+    vec2i d = *dst_pos;
 
     if(d.x < 0) {
         sz.x += d.x;
@@ -163,7 +163,7 @@ void image_blit(int source_image_id, uint16_t *lcd_buffer, vec2 const *src_pos, 
 
 //////////////////////////////////////////////////////////////////////
 
-void image_fillrect_noclip(uint16_t *lcd_buffer, vec2 const *topleft, vec2 const *size, uint16_t pixel)
+void image_fillrect_noclip(uint16_t *lcd_buffer, vec2i const *topleft, vec2i const *size, uint16_t pixel)
 {
     pixel = (pixel >> 8) | (pixel << 8);
     uint16_t *dst = lcd_buffer + topleft->x + topleft->y * LCD_WIDTH;
@@ -178,10 +178,10 @@ void image_fillrect_noclip(uint16_t *lcd_buffer, vec2 const *topleft, vec2 const
 
 //////////////////////////////////////////////////////////////////////
 
-void image_fillrect(uint16_t *lcd_buffer, vec2 const *topleft, vec2 const *size, uint16_t pixel)
+void image_fillrect(uint16_t *lcd_buffer, vec2i const *topleft, vec2i const *size, uint16_t pixel)
 {
-    vec2 tl = *topleft;
-    vec2 sz = *size;
+    vec2i tl = *topleft;
+    vec2i sz = *size;
     if(tl.x < 0) {
         sz.x += tl.x;
         tl.x = 0;

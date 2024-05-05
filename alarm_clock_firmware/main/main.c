@@ -25,6 +25,8 @@
 
 static char const *TAG = "main";
 
+//////////////////////////////////////////////////////////////////////
+
 #define ERASE_FLASH 0
 
 void app_main(void)
@@ -52,11 +54,11 @@ void app_main(void)
 
         uint8_t const *text = (uint8_t const *)"22:48";
 
-        vec2 text_size;
+        vec2i text_size;
 
         font_measure_string(digits_font, text, &text_size);
 
-        vec2 text_pos = { (240 - text_size.x) / 2, (240 - text_size.y) / 2 };
+        vec2i text_pos = { (240 - text_size.x) / 2, (240 - text_size.y) / 2 };
         font_drawtext(digits_font, lcd_buffer, &text_pos, text, COLOR_BLACK);
 
         image_t const *src_img = image_get(blip_image_id);
@@ -64,9 +66,9 @@ void app_main(void)
             float t = (float)i * M_TWOPI / 60.0f;
             float x = sinf(t) * 114 + 120;
             float y = 120 - cosf(t) * 114;
-            vec2 src_pos = { 0, 0 };
-            vec2 size = { src_img->width, src_img->height };
-            vec2 dst_pos = { (int)x, (int)y };
+            vec2i src_pos = { 0, 0 };
+            vec2i size = { src_img->width, src_img->height };
+            vec2i dst_pos = { (int)x, (int)y };
             dst_pos.x -= size.x / 2;
             dst_pos.y -= size.y / 2;
             image_blit(blip_image_id, lcd_buffer, &src_pos, &dst_pos, &size);
@@ -77,9 +79,9 @@ void app_main(void)
             float t = (float)i * M_TWOPI / 60.0f;
             float x = sinf(t) * 104 + 120;
             float y = 120 - cosf(t) * 104;
-            vec2 src_pos = { 0, 0 };
-            vec2 size = { src_img->width, src_img->height };
-            vec2 dst_pos = { (int)x, (int)y };
+            vec2i src_pos = { 0, 0 };
+            vec2i size = { src_img->width, src_img->height };
+            vec2i dst_pos = { (int)x, (int)y };
             dst_pos.x -= size.x / 2;
             dst_pos.y -= size.y / 2;
             image_blit(small_blip_image_id, lcd_buffer, &src_pos, &dst_pos, &size);

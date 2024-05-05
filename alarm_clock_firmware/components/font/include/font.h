@@ -42,9 +42,9 @@ typedef struct font_t *font_handle_t;
 
 esp_err_t font_init(font_data const *fnt, char const *name, uint8_t const *png_start, uint8_t const *png_end, font_handle_t *handle);
 
-void font_drawtext(font_handle_t fnt, uint16_t *lcd_buffer, vec2 const *pos, uint8_t const *text, uint16_t back_color);
+void font_drawtext(font_handle_t fnt, uint16_t *lcd_buffer, vec2i const *pos, uint8_t const *text, uint16_t back_color);
 
-void font_measure_string(font_handle_t fnt, uint8_t const *text, vec2 *size);
+void font_measure_string(font_handle_t fnt, uint8_t const *text, vec2i *size);
 
 //////////////////////////////////////////////////////////////////////
 
