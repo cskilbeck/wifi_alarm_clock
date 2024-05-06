@@ -19,6 +19,7 @@
 #include "audio_mem.h"
 #include "audio_common.h"
 #include "audio_alc.h"
+#include "filter_resample.h"
 
 #include "i2s_stream.h"
 #include "http_stream.h"
@@ -42,7 +43,31 @@ static char const *TAG = "stream";
 
 //////////////////////////////////////////////////////////////////////
 
+#define STREAM_RATE 44100
+#define STREAM_CHANNEL 1
+#define STREAM_BITS 8
+
+#define PLAYBACK_RATE 22050
+#define PLAYBACK_CHANNEL 1
+#define PLAYBACK_BITS 16
+
+//////////////////////////////////////////////////////////////////////
+
 static TaskHandle_t stream_task_handle;
+
+//////////////////////////////////////////////////////////////////////
+
+static audio_element_handle_t create_resample_filter(int source_rate, int source_channel, int dest_rate, int dest_channel)
+{
+    rsp_filter_cfg_t rsp_cfg = DEFAULT_RESAMPLE_FILTER_CONFIG();
+    rsp_cfg.src_rate = source_rate;
+    rsp_cfg.src_ch = source_channel;
+    rsp_cfg.dest_rate = dest_rate;
+    rsp_cfg.dest_ch = dest_channel;
+    return rsp_filter_init(&rsp_cfg);
+}
+
+//////////////////////////////////////////////////////////////////////
 
 static void stream_task(void *)
 {
@@ -81,21 +106,20 @@ static void stream_task(void *)
     audio_element_handle_t volume_control = alc_volume_setup_init(&alc_cfg);
     audio_pipeline_register(pipeline, volume_control, "alc");
 
+    audio_element_handle_t rsp_filter = create_resample_filter(STREAM_RATE, STREAM_CHANNEL, PLAYBACK_RATE, PLAYBACK_CHANNEL);
+    audio_pipeline_register(pipeline, rsp_filter, "downsample");
+
     i2s_stream_cfg_t i2s_cfg = I2S_STREAM_CFG_DEFAULT();
     i2s_cfg.type = AUDIO_STREAM_WRITER;
     audio_element_handle_t i2s_stream_writer = i2s_stream_init(&i2s_cfg);
     audio_pipeline_register(pipeline, i2s_stream_writer, "i2s");
 
-    const char *link_tag[4] = { "http", "decode", "alc", "i2s" };
-    audio_pipeline_link(pipeline, link_tag, 4);
-
-    ESP_LOGI(TAG, "1");
+    const char *link_tag[] = { "http", "decode", "downsample", "alc", "i2s" };
+    audio_pipeline_link(pipeline, link_tag, ARRAY_SIZE(link_tag));
 
     esp_periph_config_t periph_cfg = DEFAULT_ESP_PERIPH_SET_CONFIG();
     periph_cfg.task_core = 1;
     esp_periph_set_handle_t set = esp_periph_set_init(&periph_cfg);
-
-    ESP_LOGI(TAG, "init encoder?");
 
     audio_board_encoder_init(set);
 
@@ -118,6 +142,7 @@ static void stream_task(void *)
     // audio_element_set_uri(http_stream_reader, "http://media-ice.musicradio.com/LBCUKMP3Low");
 
     while(1) {
+
         audio_event_iface_msg_t msg;
         esp_err_t ret = audio_event_iface_listen(evt, &msg, 1);
 
@@ -125,38 +150,69 @@ static void stream_task(void *)
             continue;
         }
 
-        if(msg.source_type == AUDIO_ELEMENT_TYPE_ELEMENT && msg.source == (void *)audio_decoder && msg.cmd == AEL_MSG_CMD_REPORT_MUSIC_INFO) {
-            audio_element_info_t music_info = { 0 };
-            audio_element_getinfo(audio_decoder, &music_info);
-            ESP_LOGI(TAG, "[ * ] Receive music info from mp3 decoder, sample_rates=%d, bits=%d, ch=%d", music_info.sample_rates, music_info.bits,
-                     music_info.channels);
-            i2s_stream_set_clk(i2s_stream_writer, music_info.sample_rates, music_info.bits, music_info.channels);
-            continue;
-        }
+        switch(msg.source_type) {
 
-        /* restart stream when the first pipeline element (http_stream_reader in this case) receives stop event (caused by reading errors) */
-        if(msg.source_type == AUDIO_ELEMENT_TYPE_ELEMENT && msg.source == (void *)http_stream_reader && msg.cmd == AEL_MSG_CMD_REPORT_STATUS &&
-           (int)msg.data == AEL_STATUS_STATE_FINISHED) {
-            ESP_LOGW(TAG, "[ * ] Restart stream");
-            audio_pipeline_stop(pipeline);
-            audio_pipeline_wait_for_stop(pipeline);
-            audio_element_reset_state(audio_decoder);
-            audio_element_reset_state(i2s_stream_writer);
-            audio_pipeline_reset_ringbuffer(pipeline);
-            audio_pipeline_reset_items_state(pipeline);
-            audio_pipeline_run(pipeline);
-            continue;
-        }
+        case AUDIO_ELEMENT_TYPE_ELEMENT:
 
-        if(msg.source_type == PERIPH_ID_MYWIFI) {
+            if(msg.source == (void *)audio_decoder) {
+
+                switch(msg.cmd) {
+
+                case AEL_MSG_CMD_REPORT_MUSIC_INFO: {
+
+                    audio_element_info_t music_info = { 0 };
+                    audio_element_getinfo(audio_decoder, &music_info);
+                    ESP_LOGI(TAG, "[ * ] Receive music info from mp3 decoder, sample_rates=%d, bits=%d, ch=%d", music_info.sample_rates, music_info.bits,
+                             music_info.channels);
+                    rsp_filter_set_src_info(rsp_filter, music_info.sample_rates, music_info.channels);
+                    i2s_stream_set_clk(i2s_stream_writer, PLAYBACK_RATE, PLAYBACK_BITS, PLAYBACK_CHANNEL);
+                }
+
+                break;
+
+                default:
+                    break;
+                }
+
+            } else if(msg.source == (void *)http_stream_reader) {
+
+                switch(msg.cmd) {
+
+                case AEL_MSG_CMD_REPORT_STATUS: {
+                    if((int)msg.data == AEL_STATUS_STATE_FINISHED) {
+                        ESP_LOGW(TAG, "[ * ] Restart stream");
+                        audio_pipeline_stop(pipeline);
+                        audio_pipeline_wait_for_stop(pipeline);
+                        audio_element_reset_state(audio_decoder);
+                        audio_element_reset_state(i2s_stream_writer);
+                        audio_pipeline_reset_ringbuffer(pipeline);
+                        audio_pipeline_reset_items_state(pipeline);
+                        audio_pipeline_run(pipeline);
+                    }
+                } break;
+
+                default:
+                    break;
+                }
+            }
+            break;
+
+        case PERIPH_ID_MYWIFI: {
+
+            ESP_LOGI(TAG, "MYWIFI says %d", msg.cmd);
+
             switch(msg.cmd) {
+
             case PERIPH_MYWIFI_CONNECTED:
+
                 audio_element_set_uri(
                     http_stream_reader,
                     "http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_radio_fourfm/bbc_radio_fourfm.isml/bbc_radio_fourfm-audio=320000.m3u8");
                 audio_pipeline_run(pipeline);
                 break;
+
             case PERIPH_MYWIFI_DISCONNECTED:
+
                 audio_pipeline_stop(pipeline);
                 audio_pipeline_wait_for_stop(pipeline);
                 audio_pipeline_terminate(pipeline);
@@ -164,20 +220,26 @@ static void stream_task(void *)
                 audio_pipeline_reset_elements(pipeline);
                 break;
             }
-            ESP_LOGI(TAG, "MYWIFI says %d", msg.cmd);
-        }
 
-        if(msg.source_type == PERIPH_ID_ENCODER) {
+        } break;
+
+        case PERIPH_ID_ENCODER: {
+
             int direction = 0;
+
             switch(msg.cmd) {
+
             case PERIPH_ENCODER_CLOCKWISE:
                 direction = 4;
                 break;
+
             case PERIPH_ENCODER_COUNTER_CLOCKWISE:
                 direction = -4;
                 break;
             }
+
             // int old_volume = volume;
+
             if(direction != 0) {
                 volume += direction;
                 if(volume > 0) {
@@ -187,6 +249,10 @@ static void stream_task(void *)
                 }
                 alc_volume_setup_set_volume(volume_control, volume);
             }
+        } break;
+
+        default:
+            break;
         }
     }
 

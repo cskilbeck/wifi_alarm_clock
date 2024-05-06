@@ -9,6 +9,7 @@ set(COMPONENT_EMBED_FILES
     "font/Big0.png"
     "font/Forte0.png"
     "image/test.png"
+    "image/face.png"
     "image/blip.png"
     "image/small_blip.png"
     )

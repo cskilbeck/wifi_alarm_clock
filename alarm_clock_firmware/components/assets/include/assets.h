@@ -26,6 +26,10 @@ extern const uint8_t small_blip_png_start[] asm("_binary_small_blip_png_start");
 extern const uint8_t small_blip_png_end[] asm("_binary_small_blip_png_end");
 #define small_blip_png_size ((size_t)(small_blip_png_end - small_blip_png_start))
 
+extern const uint8_t face_png_start[] asm("_binary_face_png_start");
+extern const uint8_t face_png_end[] asm("_binary_face_png_end");
+#define face_png_size ((size_t)(face_png_end - face_png_start))
+
 //////////////////////////////////////////////////////////////////////
 
 #include "image.h"
@@ -43,6 +47,7 @@ extern font_handle_t forte_font;
 
 extern int blip_image_id;
 extern int small_blip_image_id;
+extern int face_image_id;
 
 //////////////////////////////////////////////////////////////////////
 

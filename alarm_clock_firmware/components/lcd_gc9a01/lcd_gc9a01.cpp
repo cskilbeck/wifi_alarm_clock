@@ -35,24 +35,27 @@ static char const *TAG = "lcd";
 
 #define LCD_HOST SPI2_HOST
 
-#define PIN_NUM_MISO ((gpio_num_t)12)
-#define PIN_NUM_MOSI ((gpio_num_t)13)
-#define PIN_NUM_CLK ((gpio_num_t)14)
-#define PIN_NUM_CS ((gpio_num_t)15)
+// effectively 26.6666 MHz - can't go higher without causing I2S problems
 
-#define PIN_NUM_DC ((gpio_num_t)4)
-#define PIN_NUM_RST ((gpio_num_t)5)
-#define PIN_NUM_BCKL ((gpio_num_t)6)
+#define LCD_SPI_SPEED 26666666
+
+#define LCD_PIN_NUM_MISO GPIO_NUM_12
+#define LCD_PIN_NUM_MOSI GPIO_NUM_13
+#define LCD_PIN_NUM_CLK GPIO_NUM_14
+#define LCD_PIN_NUM_CS GPIO_NUM_15
+#define LCD_PIN_NUM_DC GPIO_NUM_4
+#define LCD_PIN_NUM_RST GPIO_NUM_5
+#define LCD_PIN_NUM_BCKL GPIO_NUM_6
 
 //////////////////////////////////////////////////////////////////////
 // LCD BACKLIGHT
 
-#define LEDC_TIMER LEDC_TIMER_0
-#define LEDC_MODE LEDC_LOW_SPEED_MODE
-#define LEDC_OUTPUT_IO PIN_NUM_BCKL
-#define LEDC_CHANNEL LEDC_CHANNEL_0
-#define LEDC_DUTY_RES LEDC_TIMER_13_BIT    // duty resolution 13 bits
-#define LEDC_FREQUENCY 4000                // 4 kHz
+#define LCD_BL_TIMER LEDC_TIMER_0
+#define LCD_BL_MODE LEDC_LOW_SPEED_MODE
+#define LCD_BL_OUTPUT_IO LCD_PIN_NUM_BCKL
+#define LCD_BL_CHANNEL LEDC_CHANNEL_0
+#define LCD_BL_DUTY_RES LEDC_TIMER_13_BIT    // duty resolution 13 bits
+#define LCD_BL_FREQUENCY 4000                // 4 kHz
 
 //////////////////////////////////////////////////////////////////////
 
@@ -166,14 +169,14 @@ namespace
 
     void spi_callback_set_data()
     {
-        gpio_set_level(PIN_NUM_DC, 1);
+        gpio_set_level(LCD_PIN_NUM_DC, 1);
     }
 
     //////////////////////////////////////////////////////////////////////
 
     void spi_callback_clear_data()
     {
-        gpio_set_level(PIN_NUM_DC, 0);
+        gpio_set_level(LCD_PIN_NUM_DC, 0);
     }
 
     //////////////////////////////////////////////////////////////////////
@@ -260,19 +263,19 @@ namespace
     esp_err_t init_backlight_pwm(void)
     {
         ledc_timer_config_t ledc_timer = {};
-        ledc_timer.speed_mode = LEDC_MODE;
-        ledc_timer.timer_num = LEDC_TIMER;
-        ledc_timer.duty_resolution = LEDC_DUTY_RES;
-        ledc_timer.freq_hz = LEDC_FREQUENCY;
+        ledc_timer.speed_mode = LCD_BL_MODE;
+        ledc_timer.timer_num = LCD_BL_TIMER;
+        ledc_timer.duty_resolution = LCD_BL_DUTY_RES;
+        ledc_timer.freq_hz = LCD_BL_FREQUENCY;
         ledc_timer.clk_cfg = LEDC_AUTO_CLK;
         ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
 
         ledc_channel_config_t ledc_channel = {};
-        ledc_channel.speed_mode = LEDC_MODE;
-        ledc_channel.channel = LEDC_CHANNEL;
-        ledc_channel.timer_sel = LEDC_TIMER;
+        ledc_channel.speed_mode = LCD_BL_MODE;
+        ledc_channel.channel = LCD_BL_CHANNEL;
+        ledc_channel.timer_sel = LCD_BL_TIMER;
         ledc_channel.intr_type = LEDC_INTR_DISABLE;
-        ledc_channel.gpio_num = LEDC_OUTPUT_IO;
+        ledc_channel.gpio_num = LCD_BL_OUTPUT_IO;
         ledc_channel.duty = 0;
         ledc_channel.hpoint = 0;
         ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
@@ -291,20 +294,20 @@ esp_err_t lcd_init()
     ESP_ERROR_CHECK(init_backlight_pwm());
 
     spi_bus_config_t buscfg = {};
-    buscfg.miso_io_num = PIN_NUM_MISO;
-    buscfg.mosi_io_num = PIN_NUM_MOSI;
-    buscfg.sclk_io_num = PIN_NUM_CLK;
+    buscfg.miso_io_num = LCD_PIN_NUM_MISO;
+    buscfg.mosi_io_num = LCD_PIN_NUM_MOSI;
+    buscfg.sclk_io_num = LCD_PIN_NUM_CLK;
     buscfg.quadwp_io_num = -1;
     buscfg.quadhd_io_num = -1;
     buscfg.max_transfer_sz = LCD_BYTES_PER_LINE * LCD_SECTION_HEIGHT;
 
     spi_device_interface_config_t devcfg = {};
     devcfg.flags = SPI_DEVICE_NO_RETURN_RESULT;
-    devcfg.clock_speed_hz = 80 * 1000 * 1000;         // Clock out at 80 MHz
-    devcfg.mode = 0;                                  // SPI mode 0
-    devcfg.spics_io_num = PIN_NUM_CS;                 // CS pin
-    devcfg.queue_size = num_transfers;                // We want to be able to queue 7 transactions at a time
-    devcfg.pre_cb = lcd_spi_pre_transfer_callback;    // Specify pre-transfer callback to handle D/C line
+    devcfg.clock_speed_hz = LCD_SPI_SPEED;
+    devcfg.mode = 0;
+    devcfg.spics_io_num = LCD_PIN_NUM_CS;
+    devcfg.queue_size = num_transfers;
+    devcfg.pre_cb = lcd_spi_pre_transfer_callback;
     devcfg.post_cb = lcd_spi_post_transfer_complete;
 
     // Initialize the SPI bus
@@ -315,16 +318,16 @@ esp_err_t lcd_init()
 
     // Initialize non-SPI GPIOs
     gpio_config_t io_conf = {};
-    io_conf.pin_bit_mask = (1ULL << PIN_NUM_DC) | (1ULL << PIN_NUM_RST);
+    io_conf.pin_bit_mask = (1ULL << LCD_PIN_NUM_DC) | (1ULL << LCD_PIN_NUM_RST);
     io_conf.mode = GPIO_MODE_OUTPUT;
     io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
     gpio_config(&io_conf);
 
     // Reset the display
-    gpio_set_level(PIN_NUM_RST, 0);
+    gpio_set_level(LCD_PIN_NUM_RST, 0);
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
-    gpio_set_level(PIN_NUM_RST, 1);
+    gpio_set_level(LCD_PIN_NUM_RST, 1);
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
     for(int cmd = 0; GC9A01A_initcmds[cmd].databytes != 0xff; ++cmd) {
@@ -397,14 +400,14 @@ esp_err_t lcd_update()
         display_list_draw(i, lcd_buffer[x]);
 
         while(!dma_buffer_sent) {
-            spin += 1;
+            vTaskDelay(0);
         }
 
         dma_buffer_sent = false;
         spi_device_queue_trans(spi, spi_transactions + i + 5, portMAX_DELAY);
         x = 1 - x;
     }
-    ESP_LOGI(TAG, "Waited %d", spin);
+    ESP_LOGV(TAG, "Waited %d", spin);
     return ESP_OK;
 }
 
@@ -412,8 +415,8 @@ esp_err_t lcd_update()
 
 esp_err_t lcd_set_backlight(uint32_t brightness_0_8191)
 {
-    ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, brightness_0_8191));
-    ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
+    ESP_ERROR_CHECK(ledc_set_duty(LCD_BL_MODE, LCD_BL_CHANNEL, brightness_0_8191));
+    ESP_ERROR_CHECK(ledc_update_duty(LCD_BL_MODE, LCD_BL_CHANNEL));
     return ESP_OK;
 }
 

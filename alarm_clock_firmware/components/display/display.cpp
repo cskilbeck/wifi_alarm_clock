@@ -74,9 +74,9 @@ namespace
 {
     //////////////////////////////////////////////////////////////////////
 
-    uint32_t display_buffer[LCD_WIDTH * LCD_SECTION_HEIGHT];
+    uint32_t DMA_ATTR display_buffer[LCD_WIDTH * LCD_SECTION_HEIGHT];
 
-    uint8_t display_list_buffer[16384];
+    uint8_t DMA_ATTR display_list_buffer[8192];
 
     uint16_t display_list_used = 0;
 
@@ -311,7 +311,7 @@ namespace
 
 void display_reset()
 {
-    ESP_LOGI(TAG, "reset");
+    ESP_LOGV(TAG, "reset");
 
     display_list_used = 0;
     for(display_list &d : display_lists) {

@@ -27,11 +27,11 @@ namespace
     void setpixel(pngle_t *pngle, uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint8_t rgba[4])
     {
         image_t *img = (image_t *)pngle_get_user_data(pngle);
-        uint32_t r = rgba[0] << 0;
+        uint32_t r = rgba[0] << 16;
         uint32_t g = rgba[1] << 8;
-        uint32_t b = rgba[2] << 16;
+        uint32_t b = rgba[2] << 0;
         uint32_t a = rgba[3] << 24;
-        img->pixel_data[x + y * img->width] = a | b | g | r;
+        img->pixel_data[x + y * img->width] = a | r | g | b;
     }
 
     //////////////////////////////////////////////////////////////////////
