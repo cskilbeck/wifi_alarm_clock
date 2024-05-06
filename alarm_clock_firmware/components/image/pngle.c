@@ -59,7 +59,6 @@ static char const *TAG = "pngle";
 
 void *pngle_calloc(size_t n, size_t s, char const *name)
 {
-    ESP_LOGI(TAG, "Allocating %zu bytes for %s", (size_t)(n) * (size_t)(s), (name));
     void *data = heap_caps_malloc(n * s, PNGLE_MEM_CAPS);
     if(data != NULL) {
         memset(data, 0, n * s);
@@ -70,7 +69,6 @@ void *pngle_calloc(size_t n, size_t s, char const *name)
 void pngle_free(void *p)
 {
     size_t s = heap_caps_get_allocated_size(p);
-    ESP_LOGI(TAG, "Free %zu bytes", s);
     heap_caps_free(p);
 }
 
@@ -220,7 +218,6 @@ void pngle_reset(pngle_t *pngle)
 
 pngle_t *pngle_new()
 {
-    ESP_LOGI(TAG, "NEW");
     pngle_t *pngle = (pngle_t *)PNGLE_CALLOC(1, sizeof(pngle_t), "pngle_t");
     if(!pngle)
         return NULL;

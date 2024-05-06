@@ -8,33 +8,20 @@
 #include "util.h"
 #include "image.h"
 #include "font.h"
+#include "display.h"
 
 static char const *TAG = "font";
 
 //////////////////////////////////////////////////////////////////////
 
-typedef struct font_t
-{
-    char const *name;
-    int image_index;
-    font_data const *font_struct;
-} font_t;
-
-//////////////////////////////////////////////////////////////////////
-
-void font_drawtext(font_handle_t fnt, uint16_t *lcd_buffer, vec2i const *pos, uint8_t const *text, uint16_t back_color)
+void font_drawtext(font_handle_t fnt, vec2i const *pos, uint8_t const *text, uint8_t alpha, int blend_mode)
 {
     assert(fnt != nullptr);
     assert(fnt->image_index != 0);
-    assert(lcd_buffer != nullptr);
     assert(pos != nullptr);
     assert(text != nullptr);
 
-    image_t const *img = image_get(fnt->image_index);
-
     font_data const *f = fnt->font_struct;
-
-    int char_height = f->height;
 
     vec2i curpos = *pos;
 
@@ -48,46 +35,14 @@ void font_drawtext(font_handle_t fnt, uint16_t *lcd_buffer, vec2i const *pos, ui
 
         int glyph_index = f->lookup[c];
 
-        if(glyph_index < 0) {
-            vec2i fillsize = { char_width, char_height };
-            image_fillrect(lcd_buffer, &curpos, &fillsize, back_color);
-        } else {
+        if(glyph_index >= 0) {
             font_graphic const &graphic = f->graphics[glyph_index];
             vec2i src = { graphic.x, graphic.y };
             vec2i offset = { graphic.offset_x, graphic.offset_y };
             vec2i dst = { curpos.x + offset.x, curpos.y + offset.y };
             vec2i size = { graphic.width, graphic.height };
 
-            // top
-            if(offset.y != 0) {
-                vec2i fillsize = { char_width, offset.y };
-                image_fillrect(lcd_buffer, &curpos, &fillsize, back_color);
-            }
-
-            // left
-            if(offset.x != 0) {
-                vec2i fillpos = { curpos.x, curpos.y + offset.y };
-                vec2i fillsize = { offset.x, char_height - offset.y };
-                image_fillrect(lcd_buffer, &fillpos, &fillsize, back_color);
-            }
-
-            // right
-            int rightremain = char_width - (offset.x + size.x);
-            if(rightremain > 0) {
-                vec2i fillpos = { dst.x + size.x, curpos.y + offset.y };
-                vec2i fillsize = { rightremain, char_height - offset.y };
-                image_fillrect(lcd_buffer, &fillpos, &fillsize, back_color);
-            }
-
-            // bottom strip
-            int bottomremain = char_height - (offset.y + size.y);
-            if(bottomremain > 0) {
-                vec2i fillpos = { dst.x, dst.y + size.y };
-                vec2i fillsize = { size.x, bottomremain };
-                image_fillrect(lcd_buffer, &fillpos, &fillsize, back_color);
-            }
-
-            image_blit(fnt->image_index, lcd_buffer, &src, &dst, &size);
+            display_imagerect(&dst, &src, &size, fnt->image_index, alpha, blend_mode);
         }
         curpos.x += char_width;
     }

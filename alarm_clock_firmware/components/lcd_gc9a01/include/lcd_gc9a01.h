@@ -9,6 +9,12 @@
 #define LCD_WIDTH 240
 #define LCD_HEIGHT 240
 
+#define LCD_SECTION_HEIGHT 16    // largest power of 2 which is divisible into 240
+#define LCD_NUM_SECTIONS (LCD_HEIGHT / LCD_SECTION_HEIGHT)
+
+#define LCD_BITS_PER_PIXEL 16
+#define LCD_BYTES_PER_LINE (LCD_WIDTH * LCD_BITS_PER_PIXEL / 8)
+
 //////////////////////////////////////////////////////////////////////
 
 #if defined(__cplusplus)
@@ -27,11 +33,11 @@ esp_err_t lcd_release_backbuffer_and_update();
 
 //////////////////////////////////////////////////////////////////////
 
-#define COLOR_BLACK 0
-#define COLOR_RED (31 << 11)
-#define COLOR_GREEN (63 << 5)
-#define COLOR_BLUE 31
+#define COLOR_BLACK 0xff000000
+#define COLOR_BLUE 0xff0000ff
+#define COLOR_GREEN 0xff00ff00
 #define COLOR_CYAN (COLOR_BLUE | COLOR_GREEN)
+#define COLOR_RED 0xffff0000
 #define COLOR_MAGENTA (COLOR_RED | COLOR_BLUE)
 #define COLOR_YELLOW (COLOR_RED | COLOR_GREEN)
 #define COLOR_WHITE (COLOR_RED | COLOR_GREEN | COLOR_BLUE)

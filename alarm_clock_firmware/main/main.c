@@ -22,6 +22,7 @@
 #include "font.h"
 #include "assets.h"
 #include "lcd_gc9a01.h"
+#include "display.h"
 
 static char const *TAG = "main";
 
@@ -48,47 +49,66 @@ void app_main(void)
     lcd_init();
     assets_init();
 
-    uint16_t *lcd_buffer;
+    display_reset();
 
-    if(lcd_get_backbuffer(&lcd_buffer, portMAX_DELAY) == ESP_OK) {
+    /////
+    {
+        vec2i dst_pos = { 0, 0 };
+        vec2i size = { LCD_WIDTH, LCD_HEIGHT };
+        display_fillrect(&dst_pos, &size, 0xffff00ff, blend_opaque);
+    }
 
-        uint8_t const *text = (uint8_t const *)"22:48";
+    /////
+    {
+        vec2i dst_pos = { 20, 20 };
+        vec2i src_pos = { 0, 0 };
+        vec2i size = { 64, 64 };
+        display_imagerect(&dst_pos, &src_pos, &size, segoe_font->image_index, 200, blend_multiply);
+    }
+
+    /////
+    {
+        font_handle_t f = forte_font;
+
+        uint8_t const *text = (uint8_t const *)"Hello, World!";
 
         vec2i text_size;
 
-        font_measure_string(digits_font, text, &text_size);
+        font_measure_string(f, text, &text_size);
 
         vec2i text_pos = { (240 - text_size.x) / 2, (240 - text_size.y) / 2 };
-        font_drawtext(digits_font, lcd_buffer, &text_pos, text, COLOR_BLACK);
-
-        image_t const *src_img = image_get(blip_image_id);
-        for(int i = 0; i < 23; ++i) {
-            float t = (float)i * M_TWOPI / 60.0f;
-            float x = sinf(t) * 114 + 120;
-            float y = 120 - cosf(t) * 114;
-            vec2i src_pos = { 0, 0 };
-            vec2i size = { src_img->width, src_img->height };
-            vec2i dst_pos = { (int)x, (int)y };
-            dst_pos.x -= size.x / 2;
-            dst_pos.y -= size.y / 2;
-            image_blit(blip_image_id, lcd_buffer, &src_pos, &dst_pos, &size);
-        }
-
-        src_img = image_get(small_blip_image_id);
-        for(int i = 0; i < 60; i += 5) {
-            float t = (float)i * M_TWOPI / 60.0f;
-            float x = sinf(t) * 104 + 120;
-            float y = 120 - cosf(t) * 104;
-            vec2i src_pos = { 0, 0 };
-            vec2i size = { src_img->width, src_img->height };
-            vec2i dst_pos = { (int)x, (int)y };
-            dst_pos.x -= size.x / 2;
-            dst_pos.y -= size.y / 2;
-            image_blit(small_blip_image_id, lcd_buffer, &src_pos, &dst_pos, &size);
-        }
-
-        lcd_release_backbuffer_and_update();
+        font_drawtext(f, &text_pos, text, 255, blend_multiply);
     }
+
+    image_t const *src_img = image_get(blip_image_id);
+    for(int i = 0; i < 23; ++i) {
+        float t = (float)i * M_TWOPI / 60.0f;
+        float x = sinf(t) * 114 + 120;
+        float y = 120 - cosf(t) * 114;
+        vec2i src_pos = { 0, 0 };
+        vec2i size = { src_img->width, src_img->height };
+        vec2i dst_pos = { (int)x, (int)y };
+        dst_pos.x -= size.x / 2;
+        dst_pos.y -= size.y / 2;
+        display_imagerect(&dst_pos, &src_pos, &size, blip_image_id, 0xff, blend_add);
+    }
+
+    src_img = image_get(small_blip_image_id);
+    for(int i = 0; i < 60; i += 5) {
+        float t = (float)i * M_TWOPI / 60.0f;
+        float x = sinf(t) * 104 + 120;
+        float y = 120 - cosf(t) * 104;
+        vec2i src_pos = { 0, 0 };
+        vec2i size = { src_img->width, src_img->height };
+        vec2i dst_pos = { (int)x, (int)y };
+        dst_pos.x -= size.x / 2;
+        dst_pos.y -= size.y / 2;
+        display_imagerect(&dst_pos, &src_pos, &size, small_blip_image_id, 0xff, blend_add);
+    }
+
+    lcd_update();
+
+    ESP_LOGI(TAG, "lcd_update complete");
 
     int64_t t = esp_timer_get_time();
     int64_t now;
@@ -105,6 +125,8 @@ void app_main(void)
     }
 
     led_set_off();
+
+    vTaskDelay(portMAX_DELAY);
 
     stream_init();
 }

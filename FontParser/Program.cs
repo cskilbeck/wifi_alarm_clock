@@ -10,7 +10,7 @@ static int get_attr(XElement x, string name)
     var attr = x.Attribute(name);
     if (attr != null)
     {
-        return int.Parse(attr.Value);
+        return (int)(float.Parse(attr.Value) + 0.5f);
     }
     throw new Exception($"Missing attribute {name} in {x.Name}");
 }

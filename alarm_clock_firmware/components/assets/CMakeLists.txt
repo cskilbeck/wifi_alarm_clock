@@ -6,6 +6,8 @@ set(COMPONENT_EMBED_FILES
     "font/Cascadia0.png"
     "font/Segoe0.png"
     "font/Digits0.png"
+    "font/Big0.png"
+    "font/Forte0.png"
     "image/test.png"
     "image/blip.png"
     "image/small_blip.png"

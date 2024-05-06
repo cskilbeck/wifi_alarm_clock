@@ -33,7 +33,6 @@
 #include "board.h"
 
 #include "led.h"
-#include "lcd_gc9a01.h"
 #include "image.h"
 #include "font.h"
 #include "stream.h"
