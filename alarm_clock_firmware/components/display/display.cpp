@@ -27,7 +27,7 @@
 #include "lcd_gc9a01.h"
 #include "display.h"
 
-static const char *TAG = "display";
+LOG_TAG("display");
 
 //////////////////////////////////////////////////////////////////////
 
@@ -43,13 +43,28 @@ namespace
 
     //////////////////////////////////////////////////////////////////////
 
+    struct display_list_node
+    {
+        uint16_t next;
+        uint16_t flags;
+    };
+
+    //////////////////////////////////////////////////////////////////////
+
+    struct display_list_t
+    {
+        display_list_node *head;
+        display_list_node root;
+    };
+
+    //////////////////////////////////////////////////////////////////////
+
     struct display_list_entry
     {
+        display_list_node node;
+
         vec2b pos;
         vec2b size;
-
-        uint16_t flags;
-        uint16_t display_list_next;
 
         union
         {
@@ -62,43 +77,46 @@ namespace
 
 //////////////////////////////////////////////////////////////////////
 
-struct display_list
-{
-    struct display_list_entry *head;    // most recently added entry
-    struct display_list_entry root;     // dummy head entry
-};
-
-//////////////////////////////////////////////////////////////////////
-
 namespace
 {
     //////////////////////////////////////////////////////////////////////
 
-    uint32_t DMA_ATTR display_buffer[LCD_WIDTH * LCD_SECTION_HEIGHT];
+#if LCD_BITS_PER_PIXEL == 16
+    uint8_t DMA_ATTR display_buffer[LCD_WIDTH * 3 * LCD_SECTION_HEIGHT];
+#endif
 
-    uint8_t DMA_ATTR display_list_buffer[8192];
+    uint8_t DMA_ATTR display_list_buffer[32768];
 
-    uint16_t display_list_used = 0;
+    size_t display_list_used = 0;
 
-    struct display_list display_lists[LCD_NUM_SECTIONS];
+    // dummy root node for each section
+    display_list_t display_lists[LCD_NUM_SECTIONS];
 
     //////////////////////////////////////////////////////////////////////
 
     inline display_list_entry const &get_display_list_entry(uint16_t offset)
     {
+        assert(offset <= (sizeof(display_list_buffer) - sizeof(display_list_entry)));
+
         return *reinterpret_cast<display_list_entry *>(display_list_buffer + offset);
     }
 
     //////////////////////////////////////////////////////////////////////
 
-    inline display_list_entry *alloc_display_list_entry(display_list *list)
+    inline display_list_entry *alloc_display_list_entry(display_list_t *display_list)
     {
-        assert(display_list_used < (sizeof(display_list_buffer) - sizeof(display_list_entry)));
+        assert(display_list_used <= (sizeof(display_list_buffer) - sizeof(display_list_entry)));
 
-        list->head->display_list_next = display_list_used;
-        display_list_entry *entry = (display_list_entry *)(display_list_buffer + display_list_used);
+        display_list->head->next = display_list_used;
+
+        display_list_entry *entry = reinterpret_cast<display_list_entry *>(display_list_buffer + display_list_used);
+
+        entry->node.next = 0xffff;
+
         display_list_used += sizeof(display_list_entry);
-        list->head = entry;
+
+        display_list->head = &entry->node;
+
         return entry;
     }
 
@@ -134,9 +152,11 @@ namespace
 
     struct do_blend_opaque
     {
-        static uint32_t blend(uint32_t src, uint32_t dst, uint8_t alpha)
+        static void blend(uint8_t *dst, uint32_t src, uint8_t alpha)
         {
-            return src;
+            dst[0] = get_r(src);
+            dst[1] = get_g(src);
+            dst[2] = get_b(src);
         }
     };
 
@@ -144,13 +164,12 @@ namespace
 
     struct do_blend_add
     {
-        static uint32_t blend(uint32_t src, uint32_t dst, uint8_t alpha)
+        static void blend(uint8_t *dst, uint32_t src, uint8_t alpha)
         {
             uint32_t sa = (get_a(src) * alpha) >> 8;
-            uint32_t r = min(255lu, get_r(dst) + ((get_r(src) * sa) >> 8));
-            uint32_t g = min(255lu, get_g(dst) + ((get_g(src) * sa) >> 8));
-            uint32_t b = min(255lu, get_b(dst) + ((get_b(src) * sa) >> 8));
-            return (r << 16) | (g << 8) | b;
+            dst[0] = min(255lu, dst[0] + (get_r(src) * sa >> 8));
+            dst[1] = min(255lu, dst[1] + (get_g(src) * sa >> 8));
+            dst[2] = min(255lu, dst[2] + (get_b(src) * sa >> 8));
         }
     };
 
@@ -158,148 +177,88 @@ namespace
 
     struct do_blend_multiply
     {
-        static uint32_t blend(uint32_t src, uint32_t dst, uint8_t alpha)
+        static void blend(uint8_t *dst, uint32_t src, uint8_t alpha)
         {
             uint32_t sa = (get_a(src) * alpha) >> 8;
             uint32_t da = 255 - sa;
-            uint32_t r = ((get_r(src) * sa) >> 8) + ((get_r(dst) * da) >> 8);
-            uint32_t g = ((get_g(src) * sa) >> 8) + ((get_g(dst) * da) >> 8);
-            uint32_t b = ((get_b(src) * sa) >> 8) + ((get_b(dst) * da) >> 8);
-            return (r << 16) | (g << 8) | b;
+            dst[0] = ((get_r(src) * sa) >> 8) + ((dst[0] * da) >> 8);
+            dst[1] = ((get_g(src) * sa) >> 8) + ((dst[1] * da) >> 8);
+            dst[2] = ((get_b(src) * sa) >> 8) + ((dst[2] * da) >> 8);
         }
     };
 
     //////////////////////////////////////////////////////////////////////
 
-    template <typename T> void do_blit(display_list_entry const &e)
+    template <typename T> void do_blit(display_list_entry const &e, uint8_t *buffer)
     {
         image_t const *source_image = image_get(e.blit.image_id);
 
         uint32_t stride = source_image->width;
 
-        uint32_t *dst = display_buffer + e.pos.x + e.pos.y * LCD_WIDTH;
+        uint8_t *dst = buffer + (e.pos.x + e.pos.y * LCD_WIDTH) * 3;
         uint32_t *src = (uint32_t *)(source_image->pixel_data + e.blit.src_pos.x + e.blit.src_pos.y * stride);
 
+        uint8_t alpha = e.blit.alpha;
+
         for(int y = 0; y < e.size.y; ++y) {
-            uint32_t *dst_row = dst;
+
+            uint8_t *dst_row = dst;
             uint32_t *src_row = src;
-            for(int x = 0; x < e.size.x; ++x) {
-                *dst_row = T::blend(*src_row, *dst_row, e.blit.alpha);
-                src_row += 1;
-                dst_row += 1;
+
+            for(int x = e.size.x; x != 0; --x) {
+                T::blend(dst_row, *src_row++, alpha);
+                dst_row += 3;
             }
+
             src += stride;
-            dst += LCD_WIDTH;
+            dst += LCD_WIDTH * 3;
         }
     }
 
     //////////////////////////////////////////////////////////////////////
 
-    template <typename T> void do_fill(display_list_entry const &e)
+    template <typename T> void do_fill(display_list_entry const &e, uint8_t *buffer)
     {
-        uint32_t *dst = display_buffer + e.pos.x + e.pos.y * LCD_WIDTH;
+        uint8_t *dst = buffer + (e.pos.x + e.pos.y * LCD_WIDTH) * 3;
+        uint8_t alpha = get_a(e.color);
         uint32_t color = e.color;
-        uint8_t alpha = get_a(color);
+
         for(int y = 0; y < e.size.y; ++y) {
-            uint32_t *dst_row = dst;
-            for(int x = 0; x < e.size.x; ++x) {
-                *dst_row = T::blend(color, *dst_row, alpha);
-                dst_row += 1;
+
+            uint8_t *dst_row = dst;
+
+            for(int x = e.size.x; x != 0; --x) {
+                T::blend(dst_row, color, alpha);
+                dst_row += 3;
             }
-            dst += LCD_WIDTH;
+            dst += LCD_WIDTH * 3;
         }
     }
 
-    //////////////////////////////////////////////////////////////////////
-
-    uint32_t constexpr RED5_MASK = 0xf80000;
-    uint32_t constexpr RED6_MASK = 0xfc0000;
-
-    uint32_t constexpr GRN6_MASK = 0x00fc00;
-
-    uint32_t constexpr BLU5_MASK = 0x0000f8;
-    uint32_t constexpr BLU6_MASK = 0x0000fc;
-
-#if LCD_BITS_PER_PIXEL == 18
+#if LCD_BITS_PER_PIXEL == 16
 
     //////////////////////////////////////////////////////////////////////
+    // convert display_buffer from ARGB32 to 16 bpp
 
-    uint64_t rgb24_to_18(uint32_t x)
+    void convert_display_buffer(uint8_t *dst)
     {
-        return ((x & RED6_MASK) >> 6) | ((x & GRN6_MASK) >> 4) | ((x & BLU6_MASK) >> 2);
-    }
+        uint8_t *src = display_buffer;
 
-    //////////////////////////////////////////////////////////////////////
+        for(int y = 0; y < LCD_SECTION_HEIGHT; ++y) {
 
-    void emit(uint64_t &v, uint32_t *p)
-    {
-        uint32_t t = static_cast<uint32_t>(v >> 32);
-        //*p = __builtin_bswap32(t);
-        *p = t;
-        //*p = 0b11111100000011111100000011111100;
-        v <<= 32;
-    }
+            uint8_t *src_row = src;
+            uint16_t *dst_row = reinterpret_cast<uint16_t *>(dst);
 
-    //////////////////////////////////////////////////////////////////////
+            for(int i = 0; i < LCD_WIDTH; i++) {
 
-    void convert_24_to_line(uint32_t *src, uint8_t *dst)
-    {
-        uint32_t *d = reinterpret_cast<uint32_t *>(dst);
+                uint32_t r = *src_row++ >> 3 << 11;
+                uint32_t g = *src_row++ >> 2 << 5;
+                uint32_t b = *src_row++ >> 3;
 
-        for(int i = 0; i < 240; i += 16) {
-
-            uint64_t r = 0;
-
-            r |= rgb24_to_18(*src++) << 46;
-            r |= rgb24_to_18(*src++) << 28;
-            emit(r, d++);
-            r |= rgb24_to_18(*src++) << 42;
-            r |= rgb24_to_18(*src++) << 24;
-            emit(r, d++);
-            r |= rgb24_to_18(*src++) << 38;
-            r |= rgb24_to_18(*src++) << 20;
-            emit(r, d++);
-            r |= rgb24_to_18(*src++) << 34;
-            r |= rgb24_to_18(*src++) << 16;
-            emit(r, d++);
-            r |= rgb24_to_18(*src++) << 30;
-            emit(r, d++);
-            r |= rgb24_to_18(*src++) << 44;
-            r |= rgb24_to_18(*src++) << 26;
-            emit(r, d++);
-            r |= rgb24_to_18(*src++) << 40;
-            r |= rgb24_to_18(*src++) << 22;
-            emit(r, d++);
-            r |= rgb24_to_18(*src++) << 36;
-            r |= rgb24_to_18(*src++) << 18;
-            emit(r, d++);
-            r |= rgb24_to_18(*src++) << 32;
-            emit(r, d++);
-        }
-    }
-
-#else
-
-    //////////////////////////////////////////////////////////////////////
-
-    uint16_t rgb24_to_16(uint32_t x)
-    {
-        uint16_t y = ((x & RED5_MASK) >> 8) | ((x & GRN6_MASK) >> 5) | ((x & BLU5_MASK) >> 3);
-        return __builtin_bswap16(y);
-    }
-
-    //////////////////////////////////////////////////////////////////////
-
-    void convert_24_to_line(uint32_t *src, uint8_t *dst)
-    {
-        uint16_t *d = reinterpret_cast<uint16_t *>(dst);
-
-        for(int i = 0; i < 240; i += 4) {
-
-            *d++ = rgb24_to_16(*src++);
-            *d++ = rgb24_to_16(*src++);
-            *d++ = rgb24_to_16(*src++);
-            *d++ = rgb24_to_16(*src++);
+                *dst_row++ = __builtin_bswap16(r | g | b);
+            }
+            src += LCD_WIDTH * 3;
+            dst += LCD_BYTES_PER_LINE;
         }
     }
 
@@ -309,16 +268,30 @@ namespace
 
 //////////////////////////////////////////////////////////////////////
 
-void display_reset()
+void display_begin_frame()
 {
-    ESP_LOGV(TAG, "reset");
+    // allocate one dummy head node for each list
+    // we can use 0 as a sentinel because the
+    // entry at location 0 is guaranteed to be a dummy
 
     display_list_used = 0;
-    for(display_list &d : display_lists) {
+
+    for(display_list_t &d : display_lists) {
+
+        d.root.next = 0xffff;
         d.head = &d.root;
-        d.head->flags = 0;
-        d.head->display_list_next = 0xffff;
     }
+}
+
+//////////////////////////////////////////////////////////////////////
+
+void display_image(vec2i *pos, uint8_t image_id, uint8_t alpha, uint8_t blendmode, vec2f *pivot)
+{
+    image_t const *image = image_get(image_id);
+    vec2i src_pos = { 0, 0 };
+    vec2i size = { image->width, image->height };
+    vec2i dst_pos = { pos->x - (int)(size.x * pivot->x), pos->y - (int)(size.y * pivot->y) };
+    display_imagerect(&dst_pos, &src_pos, &size, image_id, alpha, blendmode);
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -327,71 +300,71 @@ void display_imagerect(vec2i const *dst_pos, vec2i const *src_pos, vec2i const *
 {
     // clip
     vec2i sz = *size;
-    vec2i s = *src_pos;
-    vec2i d = *dst_pos;
-    if(d.x < 0) {
-        sz.x += d.x;
-        s.x -= d.x;
-        d.x = 0;
+    vec2i src = *src_pos;
+    vec2i dst = *dst_pos;
+    if(dst.x < 0) {
+        sz.x += dst.x;
+        src.x -= dst.x;
+        dst.x = 0;
     }
     if(sz.x <= 0) {
         return;
     }
-    if(d.y < 0) {
-        sz.y += d.y;
-        s.y -= d.y;
-        d.y = 0;
+    if(dst.y < 0) {
+        sz.y += dst.y;
+        src.y -= dst.y;
+        dst.y = 0;
     }
     if(sz.y <= 0) {
         return;
     }
-    int right = (d.x + sz.x) - LCD_WIDTH;
-    if(right > 0) {
-        sz.x -= right;
+    int right_clip = (dst.x + sz.x) - LCD_WIDTH;
+    if(right_clip > 0) {
+        sz.x -= right_clip;
         if(sz.x <= 0) {
             return;
         }
     }
-    int bottom = (d.y + sz.y) - LCD_HEIGHT;
-    if(bottom > 0) {
-        sz.y -= bottom;
+    int bottom_clip = (dst.y + sz.y) - LCD_HEIGHT;
+    if(bottom_clip > 0) {
+        sz.y -= bottom_clip;
         if(sz.y <= 0) {
             return;
         }
     }
 
-    int top_section = d.y / LCD_SECTION_HEIGHT;
+    int top_section = dst.y / LCD_SECTION_HEIGHT;
     int section_top_y = top_section * LCD_SECTION_HEIGHT;
 
-    int src_y = s.y;
-    int dst_y = d.y - section_top_y;
+    int src_y = src.y;
+    int dst_y = dst.y - section_top_y;
 
     int remaining_height = sz.y;
-    int cur_height = min(remaining_height, section_top_y + LCD_SECTION_HEIGHT - d.y);
+    int cur_height = min(remaining_height, section_top_y + LCD_SECTION_HEIGHT - dst.y);
 
-    display_list *dsp_list = display_lists + top_section;
+    display_list_t *display_list = display_lists + top_section;
 
     do {
 
         cur_height = min(remaining_height, LCD_SECTION_HEIGHT);
 
-        int overflow = LCD_SECTION_HEIGHT - (dst_y + cur_height);
+        int overflow = max(0, LCD_SECTION_HEIGHT - (dst_y + cur_height));
 
-        cur_height += min(0, overflow);
+        cur_height += overflow;
 
-        display_list_entry *e = alloc_display_list_entry(dsp_list);
+        display_list_entry *e = alloc_display_list_entry(display_list);
 
-        e->pos = vec2b{ (uint8_t)d.x, (uint8_t)dst_y };
+        e->pos = vec2b{ (uint8_t)dst.x, (uint8_t)dst_y };
         e->size = vec2b{ (uint8_t)sz.x, (uint8_t)cur_height };
         e->blit.image_id = image_id;
-        e->blit.src_pos = vec2b{ (uint8_t)s.x, (uint8_t)src_y };
+        e->blit.src_pos = vec2b{ (uint8_t)src.x, (uint8_t)src_y };
         e->blit.alpha = alpha;
-        e->flags = blendmode | 0x80;
-        e->display_list_next = 0xffff;
+        e->node.flags = blendmode | 0x8000;
+
         src_y += cur_height;
         remaining_height -= cur_height;
         dst_y = 0;
-        dsp_list += 1;
+        display_list += 1;
 
     } while(remaining_height > 0);
 }
@@ -417,16 +390,16 @@ void display_fillrect(vec2i const *dst_pos, vec2i const *size, uint32_t color, u
     if(sz.y <= 0) {
         return;
     }
-    int right = (d.x + sz.x) - LCD_WIDTH;
-    if(right > 0) {
-        sz.x -= right;
+    int right_clip = (d.x + sz.x) - LCD_WIDTH;
+    if(right_clip > 0) {
+        sz.x -= right_clip;
         if(sz.x <= 0) {
             return;
         }
     }
-    int bottom = (d.y + sz.y) - LCD_HEIGHT;
-    if(bottom > 0) {
-        sz.y -= bottom;
+    int bottom_clip = (d.y + sz.y) - LCD_HEIGHT;
+    if(bottom_clip > 0) {
+        sz.y -= bottom_clip;
         if(sz.y <= 0) {
             return;
         }
@@ -438,7 +411,7 @@ void display_fillrect(vec2i const *dst_pos, vec2i const *size, uint32_t color, u
     int remaining_height = size->y;
     int cur_height = min(remaining_height, section_top_y + LCD_SECTION_HEIGHT - dst_pos->y);
 
-    display_list *dsp_list = display_lists + top_section;
+    display_list_t *display_list = display_lists + top_section;
 
     int dst_y = dst_pos->y - section_top_y;
 
@@ -449,15 +422,15 @@ void display_fillrect(vec2i const *dst_pos, vec2i const *size, uint32_t color, u
 
         cur_height += min(0, overflow);
 
-        display_list_entry *e = alloc_display_list_entry(dsp_list);
+        display_list_entry *e = alloc_display_list_entry(display_list);
         e->pos = vec2b{ (uint8_t)dst_pos->x, (uint8_t)dst_y };
         e->size = vec2b{ (uint8_t)size->x, (uint8_t)cur_height };
         e->color = color;
-        e->flags = blendmode;
+        e->node.flags = blendmode;
 
         remaining_height -= cur_height;
         dst_y = 0;
-        dsp_list += 1;
+        display_list += 1;
 
     } while(remaining_height > 0);
 }
@@ -468,57 +441,69 @@ void display_fillrect(vec2i const *dst_pos, vec2i const *size, uint32_t color, u
 
 void display_list_draw(int section, uint8_t *buffer)
 {
-    display_list *l = display_lists + section;
+#if LCD_BITS_PER_PIXEL == 16
+    uint8_t *draw_buffer = display_buffer;
+#else
+    uint8_t *draw_buffer = buffer;
+#endif
 
-    uint16_t offset = l->root.display_list_next;
+    uint16_t offset = display_lists[section].root.next;
 
     while(offset != 0xffff) {
 
         display_list_entry const &e = get_display_list_entry(offset);
 
-        if(e.flags & 0x80) {
+        if(e.node.flags & 0x8000) {
 
-            switch(e.flags & 3) {
+            switch(e.node.flags & 3) {
             case blend_opaque:
-                do_blit<do_blend_opaque>(e);
+                do_blit<do_blend_opaque>(e, draw_buffer);
                 break;
             case blend_add:
-                do_blit<do_blend_add>(e);
+                do_blit<do_blend_add>(e, draw_buffer);
                 break;
             case blend_multiply:
-                do_blit<do_blend_multiply>(e);
+                do_blit<do_blend_multiply>(e, draw_buffer);
                 break;
             default:
                 break;
             }
 
         } else {
-            switch(e.flags & 3) {
+            switch(e.node.flags & 3) {
             case blend_opaque:
-                do_fill<do_blend_opaque>(e);
+                do_fill<do_blend_opaque>(e, draw_buffer);
                 break;
             case blend_add:
-                do_fill<do_blend_add>(e);
+                do_fill<do_blend_add>(e, draw_buffer);
                 break;
             case blend_multiply:
-                do_fill<do_blend_multiply>(e);
+                do_fill<do_blend_multiply>(e, draw_buffer);
                 break;
             default:
                 break;
             }
         }
-        offset = e.display_list_next;
+        offset = e.node.next;
     }
 
-    // convert display_buffer from ARGB32 to 16 (18?) bpp
+#if LCD_BITS_PER_PIXEL == 16
 
-    // TODO (chs): double buffer and do this on the other core
+    convert_display_buffer(buffer);
 
-    uint32_t *src_row = display_buffer;
-    uint8_t *dst_row = buffer;
-    for(int y = 0; y < LCD_SECTION_HEIGHT; ++y) {
-        convert_24_to_line(src_row, dst_row);
-        src_row += LCD_WIDTH;
-        dst_row += LCD_BYTES_PER_LINE;
-    }
+#endif
+}
+
+//////////////////////////////////////////////////////////////////////
+
+void display_end_frame()
+{
+    lcd_update(display_list_draw);
+}
+
+//////////////////////////////////////////////////////////////////////
+
+void display_init()
+{
+    lcd_init();
 }

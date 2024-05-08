@@ -1,5 +1,9 @@
 #pragma once
 
+//////////////////////////////////////////////////////////////////////
+
+#define LOG_TAG(x) static const char *TAG __attribute__((unused)) = x
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -11,6 +15,12 @@ typedef struct vec2i
     int x;
     int y;
 } vec2i;
+
+typedef struct vec2f
+{
+    float x;
+    float y;
+} vec2f;
 
 typedef struct vec2b
 {

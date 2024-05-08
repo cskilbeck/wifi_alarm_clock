@@ -9,11 +9,19 @@
 #define LCD_WIDTH 240
 #define LCD_HEIGHT 240
 
+#define LCD_BITS_PER_PIXEL 18
+
+// FORMAT for 18bpp is like 24bpp but low two bits are ignored
+#if LCD_BITS_PER_PIXEL == 18
+#define LCD_BYTES_PER_PIXEL 3
+#else
+#define LCD_BYTES_PER_PIXEL 2
+#endif
+
+#define LCD_BYTES_PER_LINE (LCD_WIDTH * LCD_BYTES_PER_PIXEL)
+
 #define LCD_SECTION_HEIGHT 16    // largest power of 2 which is divisible into 240
 #define LCD_NUM_SECTIONS (LCD_HEIGHT / LCD_SECTION_HEIGHT)
-
-#define LCD_BITS_PER_PIXEL 16
-#define LCD_BYTES_PER_LINE (LCD_WIDTH * LCD_BITS_PER_PIXEL / 8)
 
 //////////////////////////////////////////////////////////////////////
 
@@ -23,13 +31,11 @@ extern "C" {
 
 //////////////////////////////////////////////////////////////////////
 
-esp_err_t lcd_init();
-esp_err_t lcd_update();
-esp_err_t lcd_set_backlight(uint32_t brightness_0_8191);
+typedef void (*lcd_buffer_filler)(int section, uint8_t *buffer);
 
-esp_err_t lcd_get_backbuffer(uint16_t **buffer, TickType_t wait_for_ticks);
-esp_err_t lcd_release_backbuffer();
-esp_err_t lcd_release_backbuffer_and_update();
+esp_err_t lcd_init();
+esp_err_t lcd_update(lcd_buffer_filler buffer_filler);
+esp_err_t lcd_set_backlight(uint32_t brightness_0_8191);
 
 //////////////////////////////////////////////////////////////////////
 

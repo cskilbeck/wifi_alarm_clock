@@ -38,8 +38,9 @@
 #include "font.h"
 #include "stream.h"
 #include "assets.h"
+#include "util.h"
 
-static char const *TAG = "stream";
+LOG_TAG("stream");
 
 //////////////////////////////////////////////////////////////////////
 
@@ -50,6 +51,13 @@ static char const *TAG = "stream";
 #define PLAYBACK_RATE 22050
 #define PLAYBACK_CHANNEL 1
 #define PLAYBACK_BITS 16
+
+#define DEFAULT_STREAM_URI "http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_radio_fourfm/bbc_radio_fourfm.isml/bbc_radio_fourfm-audio=320000.m3u8"
+// #define DEFAULT_STREAM_URI "http://stream.live.vc.bbcmedia.co.uk/bbc_world_service"
+// #define DEFAULT_STREAM_URI "https://dl.espressif.com/dl/audio/ff-16b-2c-44100hz.mp3"
+// #define DEFAULT_STREAM_URI "http://media-ice.musicradio.com/LBCLondon.m3u"
+// #define DEFAULT_STREAM_URI "http://media-ice.musicradio.com/LBCUK.m3u"
+// #define DEFAULT_STREAM_URI "http://media-ice.musicradio.com/LBCUKMP3Low"
 
 //////////////////////////////////////////////////////////////////////
 
@@ -135,12 +143,6 @@ static void stream_task(void *)
 
     audio_event_iface_set_listener(esp_periph_set_get_event_iface(set), evt);
 
-    // audio_element_set_uri(http_stream_reader, "http://stream.live.vc.bbcmedia.co.uk/bbc_world_service");
-    // audio_element_set_uri(http_stream_reader, "https://dl.espressif.com/dl/audio/ff-16b-2c-44100hz.mp3");
-    // audio_element_set_uri(http_stream_reader, "http://media-ice.musicradio.com/LBCLondon.m3u");
-    // audio_element_set_uri(http_stream_reader, "http://media-ice.musicradio.com/LBCUK.m3u");
-    // audio_element_set_uri(http_stream_reader, "http://media-ice.musicradio.com/LBCUKMP3Low");
-
     while(1) {
 
         audio_event_iface_msg_t msg;
@@ -160,15 +162,12 @@ static void stream_task(void *)
 
                 case AEL_MSG_CMD_REPORT_MUSIC_INFO: {
 
-                    audio_element_info_t music_info = { 0 };
-                    audio_element_getinfo(audio_decoder, &music_info);
-                    ESP_LOGI(TAG, "[ * ] Receive music info from mp3 decoder, sample_rates=%d, bits=%d, ch=%d", music_info.sample_rates, music_info.bits,
-                             music_info.channels);
-                    rsp_filter_set_src_info(rsp_filter, music_info.sample_rates, music_info.channels);
+                    audio_element_info_t info;
+                    audio_element_getinfo(audio_decoder, &info);
+                    ESP_LOGI(TAG, "STREAM: sample_rate %d, bits=%d, ch=%d", info.sample_rates, info.bits, info.channels);
+                    rsp_filter_set_src_info(rsp_filter, info.sample_rates, info.channels);
                     i2s_stream_set_clk(i2s_stream_writer, PLAYBACK_RATE, PLAYBACK_BITS, PLAYBACK_CHANNEL);
-                }
-
-                break;
+                } break;
 
                 default:
                     break;
@@ -180,7 +179,7 @@ static void stream_task(void *)
 
                 case AEL_MSG_CMD_REPORT_STATUS: {
                     if((int)msg.data == AEL_STATUS_STATE_FINISHED) {
-                        ESP_LOGW(TAG, "[ * ] Restart stream");
+                        ESP_LOGW(TAG, "Restart stream");
                         audio_pipeline_stop(pipeline);
                         audio_pipeline_wait_for_stop(pipeline);
                         audio_element_reset_state(audio_decoder);
@@ -205,9 +204,7 @@ static void stream_task(void *)
 
             case PERIPH_MYWIFI_CONNECTED:
 
-                audio_element_set_uri(
-                    http_stream_reader,
-                    "http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_radio_fourfm/bbc_radio_fourfm.isml/bbc_radio_fourfm-audio=320000.m3u8");
+                audio_element_set_uri(http_stream_reader, DEFAULT_STREAM_URI);
                 audio_pipeline_run(pipeline);
                 break;
 
@@ -278,7 +275,7 @@ static void stream_task(void *)
 
 esp_err_t stream_init(void)
 {
-    if(xTaskCreatePinnedToCore(stream_task, "stream", 4096, NULL, 20, &stream_task_handle, 1) != pdPASS) {
+    if(xTaskCreatePinnedToCore(stream_task, "stream", 4096, NULL, 10, &stream_task_handle, 1) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
     return ESP_OK;

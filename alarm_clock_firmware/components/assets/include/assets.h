@@ -48,6 +48,7 @@ extern font_handle_t forte_font;
 extern int blip_image_id;
 extern int small_blip_image_id;
 extern int face_image_id;
+extern int test_image_id;
 
 //////////////////////////////////////////////////////////////////////
 

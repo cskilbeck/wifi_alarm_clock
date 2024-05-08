@@ -236,49 +236,49 @@ void lcd_qrcode_display(esp_qrcode_handle_t qrcode)
 {
     ESP_LOGI(TAG, "lcd_qrcode_display");
 
-    int border = 2;
-    int max_size = LCD_WIDTH;
-    if(max_size > LCD_HEIGHT) {
-        max_size = LCD_HEIGHT;
-    }
-    max_size = (int)(max_size * (M_SQRT2 / 2.0f));
+    // int border = 2;
+    // int max_size = LCD_WIDTH;
+    // if(max_size > LCD_HEIGHT) {
+    //     max_size = LCD_HEIGHT;
+    // }
+    // max_size = (int)(max_size * (M_SQRT2 / 2.0f));
 
-    int qr_size = qrcodegen_getSize(qrcode) + border * 2;
-    int dot_size = max_size / qr_size;    // the divide rounds down
-    int image_size = qr_size * dot_size;
+    // int qr_size = qrcodegen_getSize(qrcode) + border * 2;
+    // int dot_size = max_size / qr_size;    // the divide rounds down
+    // int image_size = qr_size * dot_size;
 
-    int xorg = (LCD_WIDTH - image_size) / 2;
-    int yorg = (LCD_HEIGHT - image_size) / 2;
+    // int xorg = (LCD_WIDTH - image_size) / 2;
+    // int yorg = (LCD_HEIGHT - image_size) / 2;
 
-    uint16_t *lcd_buffer;
-    if(lcd_get_backbuffer(&lcd_buffer, portMAX_DELAY) == ESP_OK) {
+    // uint16_t *lcd_buffer;
+    // if(lcd_get_backbuffer(&lcd_buffer, portMAX_DELAY) == ESP_OK) {
 
-        ESP_LOGI(TAG, "Got backbuffer: %p", lcd_buffer);
+    //     ESP_LOGI(TAG, "Got backbuffer: %p", lcd_buffer);
 
-        memset(lcd_buffer, 0x0f, LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t));
+    //     memset(lcd_buffer, 0x0f, LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t));
 
-        uint16_t *row = lcd_buffer + xorg * LCD_WIDTH + yorg;
+    //     uint16_t *row = lcd_buffer + xorg * LCD_WIDTH + yorg;
 
-        ESP_LOGI(TAG, "qr_size = %d", qr_size);
+    //     ESP_LOGI(TAG, "qr_size = %d", qr_size);
 
-        for(int y = 0; y < qr_size; ++y) {
-            uint16_t *col = row;
-            for(int x = 0; x < qr_size; ++x) {
-                uint16_t p = qrcodegen_getModule(qrcode, x - border, y - border) ? 0x0000 : 0xffff;
-                uint16_t *d = col;
-                for(int iy = 0; iy < dot_size; ++iy) {
-                    for(int ix = 0; ix < dot_size; ++ix) {
-                        d[ix] = p;
-                    }
-                    d += LCD_WIDTH;
-                }
-                col += dot_size;
-            }
-            row += LCD_WIDTH * dot_size;
-        }
-        lcd_release_backbuffer_and_update();
-        lcd_set_backlight(8191);
-    }
+    //     for(int y = 0; y < qr_size; ++y) {
+    //         uint16_t *col = row;
+    //         for(int x = 0; x < qr_size; ++x) {
+    //             uint16_t p = qrcodegen_getModule(qrcode, x - border, y - border) ? 0x0000 : 0xffff;
+    //             uint16_t *d = col;
+    //             for(int iy = 0; iy < dot_size; ++iy) {
+    //                 for(int ix = 0; ix < dot_size; ++ix) {
+    //                     d[ix] = p;
+    //                 }
+    //                 d += LCD_WIDTH;
+    //             }
+    //             col += dot_size;
+    //         }
+    //         row += LCD_WIDTH * dot_size;
+    //     }
+    //     lcd_release_backbuffer_and_update();
+    //     lcd_set_backlight(8191);
+    // }
     ESP_LOGI(TAG, "done QR display");
 }
 

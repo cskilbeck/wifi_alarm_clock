@@ -15,6 +15,7 @@ typedef struct image
     uint32_t *pixel_data;
     int width;
     int height;
+    int image_id;
 } image_t;
 
 //////////////////////////////////////////////////////////////////////

@@ -10,7 +10,7 @@
 #include "font.h"
 #include "display.h"
 
-static char const *TAG = "font";
+LOG_TAG("font");
 
 //////////////////////////////////////////////////////////////////////
 

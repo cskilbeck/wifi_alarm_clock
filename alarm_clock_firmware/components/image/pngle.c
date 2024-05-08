@@ -35,8 +35,6 @@
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 
-static char const *TAG = "pngle";
-
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
@@ -68,7 +66,6 @@ void *pngle_calloc(size_t n, size_t s, char const *name)
 
 void pngle_free(void *p)
 {
-    size_t s = heap_caps_get_allocated_size(p);
     heap_caps_free(p);
 }
 

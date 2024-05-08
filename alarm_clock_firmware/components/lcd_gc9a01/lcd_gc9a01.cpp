@@ -1,12 +1,5 @@
 //////////////////////////////////////////////////////////////////////
-// lcd_init();
-// lcd_set_backlight(7000);
-// uint16_t *buffer;
-// if(lcd_get_backbuffer(&buffer, portMAX_DELAY) == ESP_OK) {
-//      buffer[200] = 0xffff;
-//      buffer[300] = 0xffff;
-//      lcd_release_backbuffer_and_update();
-// }
+// LCD base level driver
 
 #include <memory.h>
 #include <stdint.h>
@@ -26,18 +19,19 @@
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "lcd_gc9a01.h"
-#include "display.h"
+#include "util.h"
 
-static char const *TAG = "lcd";
+LOG_TAG("lcd");
 
 //////////////////////////////////////////////////////////////////////
 // LCD SPI
 
-#define LCD_HOST SPI2_HOST
+#define LCD_SPI_HOST SPI2_HOST
 
 // effectively 26.6666 MHz - can't go higher without causing I2S problems
 
-#define LCD_SPI_SPEED 26666666
+// #define LCD_SPI_SPEED 26666666
+#define LCD_SPI_SPEED 80000000
 
 #define LCD_PIN_NUM_MISO GPIO_NUM_12
 #define LCD_PIN_NUM_MOSI GPIO_NUM_13
@@ -59,6 +53,12 @@ static char const *TAG = "lcd";
 
 //////////////////////////////////////////////////////////////////////
 
+#define USE_EVENT_GROUP_FOR_DMA_SYNC
+
+#define LCD_NUM_SPI_TRANSFERS (LCD_NUM_SECTIONS + 5)
+
+//////////////////////////////////////////////////////////////////////
+
 namespace
 {
     struct spi_callback_user_data_s
@@ -71,20 +71,17 @@ namespace
 
     typedef struct spi_callback_user_data_s spi_callback_user_data_t;
 
-    DMA_ATTR uint8_t lcd_buffer[2][LCD_BYTES_PER_LINE * LCD_SECTION_HEIGHT];
-
     spi_device_handle_t spi;
-    int constexpr num_transfers = LCD_NUM_SECTIONS + 5;
 
     static_assert(LCD_HEIGHT % LCD_SECTION_HEIGHT == 0);
 
-    volatile bool dma_buffer_sent = true;
+    DMA_ATTR spi_transaction_t spi_transactions[LCD_NUM_SPI_TRANSFERS];
 
-    spi_transaction_t spi_transactions[num_transfers];
+    IRAM_ATTR void spi_callback_set_data();
+    IRAM_ATTR void spi_callback_clear_data();
+    IRAM_ATTR void spi_callback_dma_complete();
 
-    void spi_callback_set_data();
-    void spi_callback_clear_data();
-    void spi_callback_dma_complete();
+    DMA_ATTR uint8_t lcd_buffer[2][LCD_BYTES_PER_LINE * LCD_SECTION_HEIGHT];
 
     spi_callback_user_data_t spi_callback_cmd = { .pre_callback = spi_callback_clear_data, .post_callback = nullptr };
 
@@ -147,7 +144,7 @@ namespace
         { 0xED, { 0x1B, 0x0B }, 2 },                            //
         { 0xAE, { 0x77 }, 1 },                                  //
         { 0xCD, { 0x63 }, 1 },                                  //
-        // { 0x70, {0x07, 0x07, 0x04, 0x0E, 0x0F, 0x09, 0x07, 0x08, 0x03}, 9},     // see note
+        //{ 0x70, { 0x07, 0x07, 0x04, 0x0E, 0x0F, 0x09, 0x07, 0x08, 0x03 }, 9 },    // see note
         { 0xE8, { 0x34 }, 1 },                                                                       //
         { 0x62, { 0x18, 0x0D, 0x71, 0xED, 0x70, 0x70, 0x18, 0x0F, 0x71, 0xEF, 0x70, 0x70 }, 12 },    //
         { 0x63, { 0x18, 0x11, 0x71, 0xF1, 0x70, 0x70, 0x18, 0x13, 0x71, 0xF3, 0x70, 0x70 }, 12 },    //
@@ -163,7 +160,63 @@ namespace
         { 0x00, { 0x00 }, 0xff },                                                                    //
     };
 
-    // note: Unsure what this line (from manufacturer's boilerplate code) is meant to do, but users reported issues, seems to work OK without:
+    // note: Unsure what this line (from manufacturer's boilerplate code) is meant to do, but users reported issues, seems to work OK without
+
+    //////////////////////////////////////////////////////////////////////
+
+#if defined(USE_EVENT_GROUP_FOR_DMA_SYNC)
+
+    EventGroupHandle_t dma_sent;
+
+    void init_dma_flag()
+    {
+        dma_sent = xEventGroupCreate();
+    }
+
+    void set_dma_flag()
+    {
+        xEventGroupSetBits(dma_sent, 1);
+    }
+
+    void wait_for_dma_flag()
+    {
+        xEventGroupWaitBits(dma_sent, 1, 1, 1, portMAX_DELAY);
+    }
+
+    void spi_callback_dma_complete()
+    {
+        BaseType_t woken = pdFALSE;
+        xEventGroupSetBitsFromISR(dma_sent, 1, &woken);
+        portYIELD_FROM_ISR(woken);
+    }
+
+#else
+    volatile bool dma_sent_flag = false;
+
+    void init_dma_flag()
+    {
+        dma_sent_flag = true;
+    }
+
+    void set_dma_flag()
+    {
+        dma_sent_flag = true;
+    }
+
+    void wait_for_dma_flag()
+    {
+        while(!dma_sent_flag) {
+            // esp_cpu_wait_for_intr();
+        }
+        dma_sent_flag = false;
+    }
+
+    void spi_callback_dma_complete()
+    {
+        set_dma_flag();
+    }
+
+#endif
 
     //////////////////////////////////////////////////////////////////////
 
@@ -177,13 +230,6 @@ namespace
     void spi_callback_clear_data()
     {
         gpio_set_level(LCD_PIN_NUM_DC, 0);
-    }
-
-    //////////////////////////////////////////////////////////////////////
-
-    void spi_callback_dma_complete()
-    {
-        dma_buffer_sent = true;
     }
 
     //////////////////////////////////////////////////////////////////////
@@ -306,15 +352,15 @@ esp_err_t lcd_init()
     devcfg.clock_speed_hz = LCD_SPI_SPEED;
     devcfg.mode = 0;
     devcfg.spics_io_num = LCD_PIN_NUM_CS;
-    devcfg.queue_size = num_transfers;
+    devcfg.queue_size = LCD_NUM_SPI_TRANSFERS;
     devcfg.pre_cb = lcd_spi_pre_transfer_callback;
     devcfg.post_cb = lcd_spi_post_transfer_complete;
 
     // Initialize the SPI bus
-    ESP_ERROR_CHECK(spi_bus_initialize(LCD_HOST, &buscfg, SPI_DMA_CH_AUTO));
+    ESP_ERROR_CHECK(spi_bus_initialize(LCD_SPI_HOST, &buscfg, SPI_DMA_CH_AUTO));
 
     // Attach the LCD to the SPI bus
-    ESP_ERROR_CHECK(spi_bus_add_device(LCD_HOST, &devcfg, &spi));
+    ESP_ERROR_CHECK(spi_bus_add_device(LCD_SPI_HOST, &devcfg, &spi));
 
     // Initialize non-SPI GPIOs
     gpio_config_t io_conf = {};
@@ -323,12 +369,12 @@ esp_err_t lcd_init()
     io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
     gpio_config(&io_conf);
 
-    // Reset the display
+    // Reset the LCD
     gpio_set_level(LCD_PIN_NUM_RST, 0);
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    vTaskDelay(pdMS_TO_TICKS(100));
 
     gpio_set_level(LCD_PIN_NUM_RST, 1);
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    vTaskDelay(pdMS_TO_TICKS(100));
 
     for(int cmd = 0; GC9A01A_initcmds[cmd].databytes != 0xff; ++cmd) {
         lcd_cmd(GC9A01A_initcmds[cmd].cmd, false);
@@ -338,76 +384,75 @@ esp_err_t lcd_init()
         }
     }
 
-    spi_transaction_t *t = spi_transactions;
-    memset(t, 0, sizeof(spi_transaction_t) * num_transfers);
+    memset(spi_transactions, 0, sizeof(spi_transactions));
 
-    t[0].tx_data[0] = 0x2A;    // Column Address Set
-    t[0].length = 8;
-    t[0].user = &spi_callback_cmd;
-    t[0].flags = SPI_TRANS_USE_TXDATA;
+    spi_transactions[0].tx_data[0] = 0x2A;    // Column Address Set
+    spi_transactions[0].length = 8;
+    spi_transactions[0].user = &spi_callback_cmd;
+    spi_transactions[0].flags = SPI_TRANS_USE_TXDATA;
 
-    t[1].tx_data[0] = 0;                         // start col High
-    t[1].tx_data[1] = 0;                         // start col Low
-    t[1].tx_data[2] = (LCD_WIDTH - 1) >> 8;      // end col High
-    t[1].tx_data[3] = (LCD_WIDTH - 1) & 0xff;    // end col Low
-    t[1].length = 8 * 4;
-    t[1].user = &spi_callback_data;
-    t[1].flags = SPI_TRANS_USE_TXDATA;
+    spi_transactions[1].tx_data[0] = 0;                         // start col High
+    spi_transactions[1].tx_data[1] = 0;                         // start col Low
+    spi_transactions[1].tx_data[2] = (LCD_WIDTH - 1) >> 8;      // end col High
+    spi_transactions[1].tx_data[3] = (LCD_WIDTH - 1) & 0xff;    // end col Low
+    spi_transactions[1].length = 8 * 4;
+    spi_transactions[1].user = &spi_callback_data;
+    spi_transactions[1].flags = SPI_TRANS_USE_TXDATA;
 
-    t[2].tx_data[0] = 0x2B;    // Row address set
-    t[2].length = 8;
-    t[2].user = &spi_callback_cmd;
-    t[2].flags = SPI_TRANS_USE_TXDATA;
+    spi_transactions[2].tx_data[0] = 0x2B;    // Row address set
+    spi_transactions[2].length = 8;
+    spi_transactions[2].user = &spi_callback_cmd;
+    spi_transactions[2].flags = SPI_TRANS_USE_TXDATA;
 
-    t[3].tx_data[0] = 0;                          // start row high
-    t[3].tx_data[1] = 0;                          // start row low
-    t[3].tx_data[2] = (LCD_HEIGHT - 1) >> 8;      // end row high
-    t[3].tx_data[3] = (LCD_HEIGHT - 1) & 0xff;    // end row low
-    t[3].length = 8 * 4;
-    t[3].user = &spi_callback_data;
-    t[3].flags = SPI_TRANS_USE_TXDATA;
+    spi_transactions[3].tx_data[0] = 0;                          // start row high
+    spi_transactions[3].tx_data[1] = 0;                          // start row low
+    spi_transactions[3].tx_data[2] = (LCD_HEIGHT - 1) >> 8;      // end row high
+    spi_transactions[3].tx_data[3] = (LCD_HEIGHT - 1) & 0xff;    // end row low
+    spi_transactions[3].length = 8 * 4;
+    spi_transactions[3].user = &spi_callback_data;
+    spi_transactions[3].flags = SPI_TRANS_USE_TXDATA;
 
-    t[4].tx_data[0] = 0x2C;
-    t[4].length = 8;
-    t[4].user = &spi_callback_cmd;
-    t[4].flags = SPI_TRANS_USE_TXDATA;
+    spi_transactions[4].tx_data[0] = 0x2C;
+    spi_transactions[4].length = 8;
+    spi_transactions[4].user = &spi_callback_cmd;
+    spi_transactions[4].flags = SPI_TRANS_USE_TXDATA;
 
-    int x = 0;
-    for(int i = 5; i < num_transfers; i++) {
+    for(int i = 5; i < LCD_NUM_SPI_TRANSFERS; i++) {
 
-        t[i].tx_buffer = lcd_buffer[x];
-        t[i].length = LCD_WIDTH * LCD_BITS_PER_PIXEL * LCD_SECTION_HEIGHT;
-        t[i].user = &spi_callback_dma_data;
-        t[i].flags = 0;
-        x = 1 - x;
+        int x = i - 5;
+        spi_transactions[i].tx_buffer = lcd_buffer[x & 1];
+        spi_transactions[i].length = LCD_WIDTH * LCD_BYTES_PER_PIXEL * 8 * LCD_SECTION_HEIGHT;
+        spi_transactions[i].user = &spi_callback_dma_data;
+        spi_transactions[i].flags = 0;
     }
+
+    init_dma_flag();
 
     return ESP_OK;
 }
 
 //////////////////////////////////////////////////////////////////////
 
-esp_err_t lcd_update()
+esp_err_t lcd_update(lcd_buffer_filler filler_callback)
 {
+    if(filler_callback == nullptr) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
     for(int i = 0; i < 5; ++i) {
         spi_device_queue_trans(spi, spi_transactions + i, portMAX_DELAY);
     }
-    // now, then, yes, here we go
-    int x = 0;
-    int spin = 0;
+
+    set_dma_flag();
+
     for(int i = 0; i < LCD_NUM_SECTIONS; ++i) {
 
-        display_list_draw(i, lcd_buffer[x]);
+        filler_callback(i, lcd_buffer[i & 1]);
 
-        while(!dma_buffer_sent) {
-            vTaskDelay(0);
-        }
+        wait_for_dma_flag();
 
-        dma_buffer_sent = false;
-        spi_device_queue_trans(spi, spi_transactions + i + 5, portMAX_DELAY);
-        x = 1 - x;
+        ESP_ERROR_CHECK(spi_device_queue_trans(spi, spi_transactions + i + 5, portMAX_DELAY));
     }
-    ESP_LOGV(TAG, "Waited %d", spin);
     return ESP_OK;
 }
 
@@ -418,27 +463,4 @@ esp_err_t lcd_set_backlight(uint32_t brightness_0_8191)
     ESP_ERROR_CHECK(ledc_set_duty(LCD_BL_MODE, LCD_BL_CHANNEL, brightness_0_8191));
     ESP_ERROR_CHECK(ledc_update_duty(LCD_BL_MODE, LCD_BL_CHANNEL));
     return ESP_OK;
-}
-
-//////////////////////////////////////////////////////////////////////
-
-esp_err_t lcd_get_backbuffer(uint16_t **buffer, TickType_t wait_for_ticks)
-{
-    assert(buffer != nullptr);
-
-    return ESP_FAIL;
-}
-
-//////////////////////////////////////////////////////////////////////
-
-esp_err_t lcd_release_backbuffer()
-{
-    return ESP_OK;
-}
-
-//////////////////////////////////////////////////////////////////////
-
-esp_err_t lcd_release_backbuffer_and_update()
-{
-    return lcd_update();
 }

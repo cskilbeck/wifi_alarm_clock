@@ -11,7 +11,7 @@ extern "C" {
 
 //////////////////////////////////////////////////////////////////////
 
-typedef struct _font_graphic
+typedef struct font_graphic
 {
     int8_t offset_x;
     int8_t offset_y;
