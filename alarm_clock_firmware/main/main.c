@@ -12,6 +12,9 @@
 #include "esp_err.h"
 #include "esp_timer.h"
 
+#include <driver/gpio.h>
+#include <driver/spi_master.h>
+
 #include "board.h"
 
 #include "led.h"
@@ -22,6 +25,7 @@
 #include "font.h"
 #include "assets.h"
 #include "lcd_gc9a01.h"
+#include "vs1053.h"
 #include "display.h"
 
 LOG_TAG("main");
@@ -30,15 +34,21 @@ LOG_TAG("main");
 
 #define ERASE_FLASH 0
 
+//////////////////////////////////////////////////////////////////////
+
 int frame = 0;
 
 EventGroupHandle_t display_event_group_handle;
 TaskHandle_t display_task_handle;
 
+//////////////////////////////////////////////////////////////////////
+
 void display_on_timer(void *)
 {
     xEventGroupSetBits(display_event_group_handle, 1);
 }
+
+//////////////////////////////////////////////////////////////////////
 
 void display_task(void *)
 {
@@ -166,6 +176,8 @@ void display_task(void *)
     }
 }
 
+//////////////////////////////////////////////////////////////////////
+
 void app_main(void)
 {
     esp_log_level_set("*", ESP_LOG_INFO);
@@ -204,7 +216,19 @@ void app_main(void)
         vTaskDelay(1);
     }
 
+    vs1053_cfg_t cfg = {};
+    cfg.pin_num_cs = GPIO_NUM_21;
+    cfg.pin_num_dcs = GPIO_NUM_38;
+    cfg.pin_num_dreq = GPIO_NUM_47;
+    cfg.pin_num_miso = GPIO_NUM_41;
+    cfg.pin_num_mosi = GPIO_NUM_48;
+    cfg.pin_num_reset = GPIO_NUM_39;
+    cfg.pin_num_sclk = GPIO_NUM_40;
+    cfg.spi_host = SPI3_HOST;
+
+    vs1053_init(&cfg);
+
     led_set_off();
 
-    stream_init();
+    // stream_init();
 }
