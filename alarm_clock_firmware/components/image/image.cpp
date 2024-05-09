@@ -9,7 +9,6 @@
 #include "util.h"
 #include "image.h"
 #include "util.h"
-#include "lcd_gc9a01.h"
 
 static char const *TAG = "image";
 
