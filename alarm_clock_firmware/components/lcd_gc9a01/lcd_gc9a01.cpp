@@ -57,6 +57,9 @@ LOG_TAG("lcd");
 
 #define LCD_NUM_SPI_TRANSFERS (LCD_NUM_SECTIONS + 5)
 
+static_assert(LCD_HEIGHT % LCD_SECTION_HEIGHT == 0);
+static_assert(LCD_BITS_PER_PIXEL == 16 || LCD_BITS_PER_PIXEL == 18);
+
 //////////////////////////////////////////////////////////////////////
 
 namespace
@@ -73,8 +76,6 @@ namespace
 
     spi_device_handle_t spi;
 
-    static_assert(LCD_HEIGHT % LCD_SECTION_HEIGHT == 0);
-
     DMA_ATTR spi_transaction_t spi_transactions[LCD_NUM_SPI_TRANSFERS];
 
     IRAM_ATTR void spi_callback_set_data();
@@ -90,77 +91,66 @@ namespace
     spi_callback_user_data_t spi_callback_dma_data = { .pre_callback = spi_callback_set_data, .post_callback = spi_callback_dma_complete };
 
     //////////////////////////////////////////////////////////////////////
-    // The LCD needs a bunch of command/argument values to be initialized. They are stored in this struct.
 
-    typedef struct
-    {
-        uint8_t cmd;
-        uint8_t data[16];
-        uint8_t databytes;    // No of data in data; bit 7 = delay after set; 0xFF = end of cmds.
-    } lcd_init_cmd_t;
+    // clang-format off
+    uint8_t const GC9A01A_initcmds[] = {
 
-    //////////////////////////////////////////////////////////////////////
-
-    lcd_init_cmd_t const GC9A01A_initcmds[] = {
-
-        { 0xEF, { 0x00 }, 0 },          //
-        { 0xEB, { 0x14 }, 1 },          //
-        { 0xFE, { 0x00 }, 0 },          //
-        { 0xEF, { 0x00 }, 0 },          //
-        { 0xEB, { 0x14 }, 1 },          //
-        { 0x84, { 0x40 }, 1 },          //
-        { 0x85, { 0xFF }, 1 },          //
-        { 0x86, { 0xFF }, 1 },          //
-        { 0x87, { 0xFF }, 1 },          //
-        { 0x88, { 0x0A }, 1 },          //
-        { 0x89, { 0x21 }, 1 },          //
-        { 0x8A, { 0x00 }, 1 },          //
-        { 0x8B, { 0x80 }, 1 },          //
-        { 0x8C, { 0x01 }, 1 },          //
-        { 0x8D, { 0x01 }, 1 },          //
-        { 0x8E, { 0xFF }, 1 },          //
-        { 0x8F, { 0xFF }, 1 },          //
-        { 0xB6, { 0x00, 0x00 }, 2 },    //
-        { 0x36, { 0x48 }, 1 },          //
+        0, 0xEF,
+        1, 0xEB, 0x14,
+        0, 0xFE,
+        0, 0xEF,
+        1, 0xEB, 0x14,
+        1, 0x84, 0x40,
+        1, 0x85, 0xFF,
+        1, 0x86, 0xFF,
+        1, 0x87, 0xFF,
+        1, 0x88, 0x0A,
+        1, 0x89, 0x21,
+        1, 0x8A, 0x00,
+        1, 0x8B, 0x80,
+        1, 0x8C, 0x01,
+        1, 0x8D, 0x01,
+        1, 0x8E, 0xFF,
+        1, 0x8F, 0xFF,
+        2, 0xB6, 0x00, 0x00,
+        1, 0x36, 0x48,
 #if LCD_BITS_PER_PIXEL == 18
-        { 0x3A, { 0x06 }, 1 },    //
+        1, 0x3A, 0x06,
 #else
-        { 0x3A, { 0x05 }, 1 },    //
+        1, 0x3A, 0x05,
 #endif
-        { 0x90, { 0x08, 0x08, 0x08, 0x08 }, 4 },                //
-        { 0xBD, { 0x06 }, 1 },                                  //
-        { 0xBC, { 0x00 }, 1 },                                  //
-        { 0xFF, { 0x60, 0x01, 0x04 }, 3 },                      //
-        { 0xC3, { 0x13 }, 1 },                                  //
-        { 0xC4, { 0x13 }, 1 },                                  //
-        { 0xC9, { 0x22 }, 1 },                                  //
-        { 0xBE, { 0x11 }, 1 },                                  //
-        { 0xE1, { 0x10, 0x0E }, 2 },                            //
-        { 0xDF, { 0x21, 0x0c, 0x02 }, 3 },                      //
-        { 0xF0, { 0x45, 0x09, 0x08, 0x08, 0x26, 0x2A }, 6 },    //
-        { 0xF1, { 0x43, 0x70, 0x72, 0x36, 0x37, 0x6F }, 6 },    //
-        { 0xF2, { 0x45, 0x09, 0x08, 0x08, 0x26, 0x2A }, 6 },    //
-        { 0xF3, { 0x43, 0x70, 0x72, 0x36, 0x37, 0x6F }, 6 },    //
-        { 0xED, { 0x1B, 0x0B }, 2 },                            //
-        { 0xAE, { 0x77 }, 1 },                                  //
-        { 0xCD, { 0x63 }, 1 },                                  //
-        //{ 0x70, { 0x07, 0x07, 0x04, 0x0E, 0x0F, 0x09, 0x07, 0x08, 0x03 }, 9 },    // see note
-        { 0xE8, { 0x34 }, 1 },                                                                       //
-        { 0x62, { 0x18, 0x0D, 0x71, 0xED, 0x70, 0x70, 0x18, 0x0F, 0x71, 0xEF, 0x70, 0x70 }, 12 },    //
-        { 0x63, { 0x18, 0x11, 0x71, 0xF1, 0x70, 0x70, 0x18, 0x13, 0x71, 0xF3, 0x70, 0x70 }, 12 },    //
-        { 0x64, { 0x28, 0x29, 0xF1, 0x01, 0xF1, 0x00, 0x07 }, 7 },                                   //
-        { 0x66, { 0x3C, 0x00, 0xCD, 0x67, 0x45, 0x45, 0x10, 0x00, 0x00, 0x00 }, 10 },                //
-        { 0x67, { 0x00, 0x3C, 0x00, 0x00, 0x00, 0x01, 0x54, 0x10, 0x32, 0x98 }, 10 },                //
-        { 0x74, { 0x10, 0x85, 0x80, 0x00, 0x00, 0x4E, 0x00 }, 7 },                                   //
-        { 0x98, { 0x3e, 0x07 }, 2 },                                                                 //
-        { 0x35, { 0x00 }, 0 },                                                                       //
-        { 0x21, { 0x00 }, 0 },                                                                       //
-        { 0x11, { 0x00 }, 0x80 },                                                                    //
-        { 0x29, { 0x00 }, 0x80 },                                                                    //
-        { 0x00, { 0x00 }, 0xff },                                                                    //
+        4, 0x90, 0x08, 0x08, 0x08, 0x08,
+        1, 0xBD, 0x06,
+        1, 0xBC, 0x00,
+        3, 0xFF, 0x60, 0x01, 0x04,
+        1, 0xC3, 0x13,
+        1, 0xC4, 0x13,
+        1, 0xC9, 0x22,
+        1, 0xBE, 0x11,
+        2, 0xE1, 0x10, 0x0E,
+        3, 0xDF, 0x21, 0x0c, 0x02,
+        6, 0xF0, 0x45, 0x09, 0x08, 0x08, 0x26, 0x2A,
+        6, 0xF1, 0x43, 0x70, 0x72, 0x36, 0x37, 0x6F,
+        6, 0xF2, 0x45, 0x09, 0x08, 0x08, 0x26, 0x2A,
+        6, 0xF3, 0x43, 0x70, 0x72, 0x36, 0x37, 0x6F,
+        2, 0xED, 0x1B, 0x0B,
+        1, 0xAE, 0x77,
+        1, 0xCD, 0x63,
+        1, 0xE8, 0x34,
+        12, 0x62, 0x18, 0x0D, 0x71, 0xED, 0x70, 0x70, 0x18, 0x0F, 0x71, 0xEF, 0x70, 0x70,
+        12, 0x63, 0x18, 0x11, 0x71, 0xF1, 0x70, 0x70, 0x18, 0x13, 0x71, 0xF3, 0x70, 0x70,
+        7, 0x64, 0x28, 0x29, 0xF1, 0x01, 0xF1, 0x00, 0x07,
+        10, 0x66, 0x3C, 0x00, 0xCD, 0x67, 0x45, 0x45, 0x10, 0x00, 0x00, 0x00,
+        10, 0x67, 0x00, 0x3C, 0x00, 0x00, 0x00, 0x01, 0x54, 0x10, 0x32, 0x98,
+        7, 0x74, 0x10, 0x85, 0x80, 0x00, 0x00, 0x4E, 0x00,
+        2, 0x98, 0x3e, 0x07,
+        0, 0x35,
+        0, 0x21,
+        0x80, 0x11,
+        0x80, 0x29,
+        0xff
     };
-
-    // note: Unsure what this line (from manufacturer's boilerplate code) is meant to do, but users reported issues, seems to work OK without
+    // clang-format on
 
     //////////////////////////////////////////////////////////////////////
 
@@ -234,52 +224,36 @@ namespace
 
     //////////////////////////////////////////////////////////////////////
 
-    /* Send a command to the LCD. Uses spi_device_polling_transmit, which waits
-     * until the transfer is complete.
-     *
-     * Since command transactions are usually small, they are handled in polling
-     * mode for higher speed. The overhead of interrupt transactions is more than
-     * just waiting for the transaction to complete.
-     */
-
-    void lcd_cmd(const uint8_t cmd, bool keep_cs_active)
+    esp_err_t lcd_cmd(const uint8_t cmd, bool keep_cs_active)
     {
-        esp_err_t ret;
         spi_transaction_t t;
-        memset(&t, 0, sizeof(t));      // Zero out the transaction
-        t.length = 8;                  // Command is 8 bits
-        t.tx_buffer = &cmd;            // The data is the cmd itself
-        t.user = &spi_callback_cmd;    // D/C needs to be set to 0
+        memset(&t, 0, sizeof(t));
+        t.length = 8;
+        t.tx_data[0] = cmd;
+        t.user = &spi_callback_cmd;
+        t.flags = SPI_TRANS_USE_TXDATA;
         if(keep_cs_active) {
-            t.flags = SPI_TRANS_CS_KEEP_ACTIVE;    // Keep CS active after data transfer
+            t.flags |= SPI_TRANS_CS_KEEP_ACTIVE;
         }
-        ret = spi_device_polling_transmit(spi, &t);    // Transmit!
-        assert(ret == ESP_OK);                         // Should have had no issues.
+        ESP_ERROR_CHECK(spi_device_polling_transmit(spi, &t));
+        return ESP_OK;
     }
 
     //////////////////////////////////////////////////////////////////////
 
-    /* Send data to the LCD. Uses spi_device_polling_transmit, which waits until the
-     * transfer is complete.
-     *
-     * Since data transactions are usually small, they are handled in polling
-     * mode for higher speed. The overhead of interrupt transactions is more than
-     * just waiting for the transaction to complete.
-     */
-
-    void lcd_data(const uint8_t *data, int len)
+    esp_err_t lcd_data(const uint8_t *data, int len)
     {
-        esp_err_t ret;
-        spi_transaction_t t;
         if(len == 0) {
-            return;    // no need to send anything
+            return ESP_OK;
         }
-        memset(&t, 0, sizeof(t));                      // Zero out the transaction
-        t.length = len * 8;                            // Len is in bytes, transaction length is in bits.
-        t.tx_buffer = data;                            // Data
-        t.user = &spi_callback_data;                   // D/C needs to be set to 1
-        ret = spi_device_polling_transmit(spi, &t);    // Transmit!
-        assert(ret == ESP_OK);                         // Should have had no issues.
+
+        spi_transaction_t t;
+        memset(&t, 0, sizeof(t));
+        t.length = len * 8;
+        t.tx_buffer = data;
+        t.user = &spi_callback_data;
+        ESP_ERROR_CHECK(spi_device_polling_transmit(spi, &t));
+        return ESP_OK;
     }
 
     //////////////////////////////////////////////////////////////////////
@@ -376,12 +350,23 @@ esp_err_t lcd_init()
     gpio_set_level(LCD_PIN_NUM_RST, 1);
     vTaskDelay(pdMS_TO_TICKS(100));
 
-    for(int cmd = 0; GC9A01A_initcmds[cmd].databytes != 0xff; ++cmd) {
-        lcd_cmd(GC9A01A_initcmds[cmd].cmd, false);
-        lcd_data(GC9A01A_initcmds[cmd].data, GC9A01A_initcmds[cmd].databytes & 0x1F);
-        if((GC9A01A_initcmds[cmd].databytes & 0x80) != 0) {
-            vTaskDelay(100 / portTICK_PERIOD_MS);
+    uint8_t const *i = GC9A01A_initcmds;
+
+    while(*i != 0xff) {
+
+        uint8_t len = *i++;
+        uint8_t cmd = *i++;
+
+        bool delay = (len & 0x80) != 0;
+        uint8_t actual_len = len & 0x1f;
+
+        lcd_cmd(cmd, false);
+        lcd_data(i, actual_len);
+
+        if(delay) {
+            vTaskDelay(pdMS_TO_TICKS(100));
         }
+        i += actual_len;
     }
 
     memset(spi_transactions, 0, sizeof(spi_transactions));
