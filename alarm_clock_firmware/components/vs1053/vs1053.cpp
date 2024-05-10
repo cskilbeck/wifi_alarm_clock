@@ -2,6 +2,8 @@
 
 #include <memory.h>
 #include <stdio.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include <esp_log.h>
 #include "util.h"
 #include "vs1053.h"
@@ -105,6 +107,18 @@ namespace
 
     spi_device_handle_t spi_handle_stream;
 
+    // task which streams data to the vs1053
+
+    TaskHandle_t audio_player_task_handle;
+
+    // event group for signalling dma completion
+
+    EventGroupHandle_t dma_event_group_handle;
+
+    // queue for sending audio_chunk data to the player task
+
+    QueueHandle_t audio_queue;
+
     // this structure copied from the VS1053 datasheet
 
 #define PARAMETRIC_VERSION 0x0003
@@ -170,17 +184,17 @@ namespace
 
     //////////////////////////////////////////////////////////////////////
 
-    // void dcs_low()
-    // {
-    //     gpio_set_level(config.pin_num_dcs, 0);
-    // }
+    void dcs_low()
+    {
+        gpio_set_level(config.pin_num_dcs, 0);
+    }
 
-    // //////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////
 
-    // void dcs_high()
-    // {
-    //     gpio_set_level(config.pin_num_dcs, 1);
-    // }
+    void dcs_high()
+    {
+        gpio_set_level(config.pin_num_dcs, 1);
+    }
 
     //////////////////////////////////////////////////////////////////////
     // wait for DREQ to go high
@@ -299,6 +313,89 @@ namespace
 
     //////////////////////////////////////////////////////////////////////
 
+    void spi_dma_callback(spi_transaction_t *trans)
+    {
+        BaseType_t woken = 0;
+        uint32_t b = (uint32_t)trans->user;
+        if(b != 0) {
+            xEventGroupSetBitsFromISR(dma_event_group_handle, b, &woken);
+        }
+        portYIELD_FROM_ISR(woken);
+    }
+
+    //////////////////////////////////////////////////////////////////////
+
+    DMA_ATTR uint8_t send_buffer[2][32];
+
+    esp_err_t send_chunk(audio_chunk_t const &chunk)
+    {
+        spi_transaction_t dma_tx = {};
+
+        dcs_low();
+
+        size_t remain = chunk.length;
+        uint8_t const *data = chunk.data;
+
+        int buffer_id = 0;
+
+        xEventGroupSetBits(dma_event_group_handle, 1);
+
+        while(remain != 0) {
+
+            size_t fragment_length = min(32u, remain);
+
+            uint8_t *buffer = send_buffer[buffer_id];
+
+            dma_tx.tx_buffer = buffer;
+            dma_tx.rxlength = 0;
+            dma_tx.length = fragment_length * 8;
+            dma_tx.user = (void *)1;
+
+            memcpy(buffer, data, fragment_length);
+
+            xEventGroupWaitBits(dma_event_group_handle, 1, 1, 1, portMAX_DELAY);
+
+            wait_for_dreq();
+
+            ESP_RETURN_IF_FAILED(spi_device_queue_trans(spi_handle_stream, &dma_tx, portMAX_DELAY));
+
+            buffer_id = 1 - buffer_id;
+
+            data += fragment_length;
+            remain -= fragment_length;
+        }
+
+        dcs_high();
+
+        return ESP_OK;
+    }
+
+    //////////////////////////////////////////////////////////////////////
+
+    void audio_player(void *)
+    {
+        ESP_LOGI(TAG, "audio_player starts up");
+
+        dma_event_group_handle = xEventGroupCreate();
+        assert(dma_event_group_handle != nullptr);
+
+        while(true) {
+
+            ESP_LOGI(TAG, "audio_player is waiting");
+            audio_chunk_t chunk;
+
+            xQueueReceive(audio_queue, &chunk, portMAX_DELAY);
+
+            ESP_LOGI(TAG, "Play %u bytes", chunk.length);
+
+            send_chunk(chunk);
+
+            ESP_LOGI(TAG, "Playback complete");
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////
+
 }    // namespace
 
 //////////////////////////////////////////////////////////////////////
@@ -321,6 +418,7 @@ esp_err_t vs1053_init(vs1053_cfg_t const *cfg)
     ESP_RETURN_IF_FAILED(gpio_config(&gpio_conf));
 
     gpio_conf.mode = GPIO_MODE_OUTPUT;
+    gpio_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
     gpio_conf.pin_bit_mask = 1llu << config.pin_num_dcs;
     ESP_RETURN_IF_FAILED(gpio_config(&gpio_conf));
 
@@ -417,6 +515,8 @@ esp_err_t vs1053_init(vs1053_cfg_t const *cfg)
 
 #endif
 
+    ESP_RETURN_IF_FAILED(sci_write_and_verify(SCI_VOL, 0x0000, 0xffff));
+
     // set clock to 49.152 MHz
 
     ESP_RETURN_IF_FAILED(sci_write_and_verify(SCI_CLOCKF, 0xA000, 0xffff));
@@ -432,6 +532,7 @@ esp_err_t vs1053_init(vs1053_cfg_t const *cfg)
     stream_spi_devcfg.clock_speed_hz = 12000000;
     stream_spi_devcfg.spics_io_num = -1;
     stream_spi_devcfg.queue_size = 1;
+    stream_spi_devcfg.post_cb = spi_dma_callback;
 
     ESP_RETURN_IF_FAILED(spi_bus_add_device(config.spi_host, &stream_spi_devcfg, &spi_handle_stream));
 
@@ -439,5 +540,27 @@ esp_err_t vs1053_init(vs1053_cfg_t const *cfg)
 
     ESP_LOGI(TAG, "HIGH speed SPI Frequency %d KHz", spi_frequency);
 
+    audio_queue = xQueueCreate(1, sizeof(audio_chunk_t));
+    assert(audio_queue != nullptr);
+
+    // kick off the audio player task
+
+    BaseType_t r = xTaskCreatePinnedToCore(audio_player, "vs1053", 4096, nullptr, 5, &audio_player_task_handle, 1);
+    if(r != pdPASS) {
+        ESP_LOGE(TAG, "xTaskCreate failed: returned %d", r);
+        return ESP_ERR_NO_MEM;
+    }
+
+    return ESP_OK;
+}
+
+//////////////////////////////////////////////////////////////////////
+
+esp_err_t vs1053_play(uint8_t const *data, size_t length)
+{
+    audio_chunk_t chunk;
+    chunk.data = data;
+    chunk.length = length;
+    xQueueSend(audio_queue, &chunk, portMAX_DELAY);
     return ESP_OK;
 }

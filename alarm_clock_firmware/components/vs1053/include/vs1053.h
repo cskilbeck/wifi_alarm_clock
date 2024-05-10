@@ -9,6 +9,8 @@
 extern "C" {
 #endif
 
+//////////////////////////////////////////////////////////////////////
+
 typedef struct vs1053_cfg_t
 {
     spi_host_device_t spi_host;
@@ -21,7 +23,19 @@ typedef struct vs1053_cfg_t
     gpio_num_t pin_num_reset;
 } vs1053_cfg_t;
 
+//////////////////////////////////////////////////////////////////////
+
+typedef struct audio_chunk
+{
+    uint8_t const *data;
+    size_t length;
+
+} audio_chunk_t;
+
+//////////////////////////////////////////////////////////////////////
+
 esp_err_t vs1053_init(vs1053_cfg_t const *cfg);
+esp_err_t vs1053_play(uint8_t const *data, size_t length);
 
 //////////////////////////////////////////////////////////////////////
 

@@ -61,7 +61,7 @@ void display_task(void *)
     esp_timer_handle_t display_timer_handle;
     ESP_ERROR_CHECK(esp_timer_create(&display_timer_args, &display_timer_handle));
 
-    esp_timer_start_periodic(display_timer_handle, 1000000 / 20);
+    esp_timer_start_periodic(display_timer_handle, 1000000 / 30);
 
     bool draw_cls = true;
     bool draw_face = true;
@@ -229,6 +229,8 @@ void app_main(void)
     vs1053_init(&cfg);
 
     led_set_off();
+
+    vs1053_play(example_mp3_start, example_mp3_size);
 
     // stream_init();
 }

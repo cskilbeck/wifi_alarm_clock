@@ -30,6 +30,10 @@ extern const uint8_t face_png_start[] asm("_binary_face_png_start");
 extern const uint8_t face_png_end[] asm("_binary_face_png_end");
 #define face_png_size ((size_t)(face_png_end - face_png_start))
 
+extern const uint8_t example_mp3_start[] asm("_binary_example_mp3_start");
+extern const uint8_t example_mp3_end[] asm("_binary_example_mp3_end");
+#define example_mp3_size ((size_t)(example_mp3_end - example_mp3_start))
+
 //////////////////////////////////////////////////////////////////////
 
 #include "image.h"
