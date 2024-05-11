@@ -25,17 +25,14 @@ typedef struct vs1053_cfg_t
 
 //////////////////////////////////////////////////////////////////////
 
-typedef struct audio_chunk
-{
-    uint8_t const *data;
-    size_t length;
+esp_err_t audio_init(vs1053_cfg_t const *cfg);
 
-} audio_chunk_t;
+esp_err_t audio_set_volume(uint8_t volume);
+esp_err_t audio_play();
+esp_err_t audio_stop();
 
-//////////////////////////////////////////////////////////////////////
-
-esp_err_t vs1053_init(vs1053_cfg_t const *cfg);
-esp_err_t vs1053_play(uint8_t const *data, size_t length);
+esp_err_t audio_acquire_buffer(size_t required, uint8_t **ptr, TickType_t ticks_to_wait);
+esp_err_t audio_send_buffer(uint8_t *ptr);
 
 //////////////////////////////////////////////////////////////////////
 

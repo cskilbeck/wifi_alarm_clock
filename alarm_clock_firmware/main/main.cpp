@@ -25,7 +25,7 @@
 #include "font.h"
 #include "assets.h"
 #include "lcd_gc9a01.h"
-#include "vs1053.h"
+#include "audio.h"
 #include "display.h"
 
 LOG_TAG("main");
@@ -38,30 +38,30 @@ LOG_TAG("main");
 
 int frame = 0;
 
-EventGroupHandle_t display_event_group_handle;
-TaskHandle_t display_task_handle;
+EventGroupHandle_t ui_event_group_handle;
+TaskHandle_t ui_task_handle;
 
 //////////////////////////////////////////////////////////////////////
 
-void display_on_timer(void *)
+void ui_on_timer(void *)
 {
-    xEventGroupSetBits(display_event_group_handle, 1);
+    xEventGroupSetBits(ui_event_group_handle, 1);
 }
 
 //////////////////////////////////////////////////////////////////////
 
-void display_task(void *)
+void ui_task(void *)
 {
-    display_event_group_handle = xEventGroupCreate();
+    ui_event_group_handle = xEventGroupCreate();
 
-    esp_timer_create_args_t display_timer_args = {};
-    display_timer_args.callback = display_on_timer;
-    display_timer_args.dispatch_method = ESP_TIMER_TASK;
-    display_timer_args.skip_unhandled_events = true;
-    esp_timer_handle_t display_timer_handle;
-    ESP_ERROR_CHECK(esp_timer_create(&display_timer_args, &display_timer_handle));
+    esp_timer_create_args_t ui_timer_args = {};
+    ui_timer_args.callback = ui_on_timer;
+    ui_timer_args.dispatch_method = ESP_TIMER_TASK;
+    ui_timer_args.skip_unhandled_events = true;
+    esp_timer_handle_t ui_timer_handle;
+    ESP_ERROR_CHECK(esp_timer_create(&ui_timer_args, &ui_timer_handle));
 
-    esp_timer_start_periodic(display_timer_handle, 1000000 / 30);
+    esp_timer_start_periodic(ui_timer_handle, 1000000 / 30);
 
     bool draw_cls = true;
     bool draw_face = true;
@@ -71,7 +71,7 @@ void display_task(void *)
 
     while(true) {
 
-        xEventGroupWaitBits(display_event_group_handle, 1, 1, 0, portMAX_DELAY);
+        xEventGroupWaitBits(ui_event_group_handle, 1, 1, 0, portMAX_DELAY);
 
         display_begin_frame();
 
@@ -178,7 +178,37 @@ void display_task(void *)
 
 //////////////////////////////////////////////////////////////////////
 
-void app_main(void)
+void play_song(void *)
+{
+    uint8_t const *src = example_mp3_start;
+    // size_t remain = example_mp3_size;
+    size_t remain = 200000;
+
+    ESP_LOGI(TAG, "Play song %u bytes", example_mp3_size);
+
+    audio_play();
+
+    while(remain != 0) {
+        uint8_t *buffer;
+        size_t fragment = min(2048u, remain);
+        audio_acquire_buffer(fragment, &buffer, portMAX_DELAY);
+        if(buffer != nullptr) {
+            memcpy(buffer, src, fragment);
+            audio_send_buffer(buffer);
+            src += fragment;
+            remain -= fragment;
+        } else {
+            ESP_LOGE(TAG, "Huh?");
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+    }
+    audio_stop();
+    vTaskDelay(portMAX_DELAY);
+}
+
+//////////////////////////////////////////////////////////////////////
+
+extern "C" void app_main(void)
 {
     esp_log_level_set("*", ESP_LOG_INFO);
 
@@ -194,28 +224,6 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(esp_netif_init());
 
-    display_init();
-
-    assets_init();
-
-    ESP_LOGI(TAG, "lcd_update complete");
-
-    int64_t t = esp_timer_get_time();
-    int64_t now;
-
-    int64_t fade_time_uS = 500000ll;
-
-    xTaskCreatePinnedToCore(display_task, "display", 4096, NULL, 2, &display_task_handle, 0);
-
-    while((now = esp_timer_get_time() - t) <= fade_time_uS) {
-        uint32_t b = (uint32_t)(now * 9500 / fade_time_uS);
-        if(b > 8191) {
-            b = 8191;
-        }
-        lcd_set_backlight(b);
-        vTaskDelay(1);
-    }
-
     vs1053_cfg_t cfg = {};
     cfg.pin_num_cs = GPIO_NUM_21;
     cfg.pin_num_dcs = GPIO_NUM_38;
@@ -226,11 +234,26 @@ void app_main(void)
     cfg.pin_num_sclk = GPIO_NUM_40;
     cfg.spi_host = SPI3_HOST;
 
-    vs1053_init(&cfg);
+    audio_init(&cfg);
+
+    display_init();
+
+    assets_init();
+
+    xTaskCreatePinnedToCore(play_song, "play_song", 4096, nullptr, 5, nullptr, 0);
+
+    int64_t t = esp_timer_get_time();
+    int64_t now;
+
+    int64_t fade_time_uS = 500000ll;
+
+    xTaskCreatePinnedToCore(ui_task, "display", 4096, NULL, 2, &ui_task_handle, 0);
+
+    while((now = esp_timer_get_time() - t) <= fade_time_uS) {
+        uint32_t b = min(8191lu, (uint32_t)(now * 9500 / fade_time_uS));
+        lcd_set_backlight(b);
+        vTaskDelay(1);
+    }
 
     led_set_off();
-
-    vs1053_play(example_mp3_start, example_mp3_size);
-
-    // stream_init();
 }

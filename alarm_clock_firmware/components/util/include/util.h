@@ -58,6 +58,11 @@ template <typename T, std::size_t N> constexpr std::size_t countof(T const (&)[N
     return N;
 }
 
+#else
+
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
 #endif
 
 //////////////////////////////////////////////////////////////////////
@@ -75,4 +80,12 @@ template <typename T, std::size_t N> constexpr std::size_t countof(T const (&)[N
             util_print_error_return_if_failed(ret, __FILE__, __LINE__, __FUNCTION__, #x); \
             return ret;                                                                   \
         }                                                                                 \
+    } while(false)
+
+#define ESP_RETURN_IF_NULL(x)                                                                        \
+    do {                                                                                             \
+        if((void *)(x) == 0) {                                                                       \
+            util_print_error_return_if_failed(ESP_ERR_NO_MEM, __FILE__, __LINE__, __FUNCTION__, #x); \
+            return ESP_ERR_NO_MEM;                                                                   \
+        }                                                                                            \
     } while(false)

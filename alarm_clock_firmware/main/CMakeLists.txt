@@ -1,5 +1,5 @@
 set(COMPONENT_SRCS
-    main.c
+    main.cpp
     stream.c
     )
 

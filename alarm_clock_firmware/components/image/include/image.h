@@ -2,13 +2,13 @@
 
 #pragma once
 
-#if defined(__cplusplus)
-extern "C" {
-#endif
-
 #include <stdint.h>
 #include <esp_err.h>
 #include "util.h"
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
 typedef struct image
 {

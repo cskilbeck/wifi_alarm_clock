@@ -34,6 +34,10 @@ extern const uint8_t example_mp3_start[] asm("_binary_example_mp3_start");
 extern const uint8_t example_mp3_end[] asm("_binary_example_mp3_end");
 #define example_mp3_size ((size_t)(example_mp3_end - example_mp3_start))
 
+extern const uint8_t boing_mp3_start[] asm("_binary_boing_mp3_start");
+extern const uint8_t boing_mp3_end[] asm("_binary_boing_mp3_end");
+#define boing_mp3_size ((size_t)(boing_mp3_end - boing_mp3_start))
+
 //////////////////////////////////////////////////////////////////////
 
 #include "image.h"

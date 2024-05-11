@@ -83,7 +83,7 @@ esp_err_t image_decode_png(int *out_image_id, uint8_t const *png_data, size_t pn
     }
     pngle_destroy(pngle);
 
-    ESP_LOGI(TAG, "Decoded PNG id %d (%dx%d)", new_image_id, new_image->width, new_image->height);
+    ESP_LOGD(TAG, "Decoded PNG id %d (%dx%d)", new_image_id, new_image->width, new_image->height);
 
     new_image->image_id = new_image_id;
     *out_image_id = new_image_id;
