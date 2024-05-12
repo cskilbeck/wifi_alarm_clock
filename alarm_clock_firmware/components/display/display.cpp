@@ -348,9 +348,11 @@ void display_imagerect(vec2i const *dst_pos, vec2i const *src_pos, vec2i const *
 
         cur_height = min(remaining_height, LCD_SECTION_HEIGHT);
 
-        int overflow = max(0, LCD_SECTION_HEIGHT - (dst_y + cur_height));
+        int overflow = LCD_SECTION_HEIGHT - (dst_y + cur_height);
 
-        cur_height += overflow;
+        if(overflow < 0) {
+            cur_height += overflow;
+        }
 
         display_list_entry *e = alloc_display_list_entry(display_list);
 

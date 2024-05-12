@@ -50,7 +50,7 @@ template <typename T> T min(T const &a, T const &b)
 
 template <typename T> T max(T const &a, T const &b)
 {
-    return a < b ? a : b;
+    return a > b ? a : b;
 }
 
 template <typename T, std::size_t N> constexpr std::size_t countof(T const (&)[N]) noexcept
