@@ -12,6 +12,7 @@
 
 #include "util.h"
 #include "lcd_gc9a01.h"
+#include "display.h"
 #include "qrcode.h"
 #include "../qrcodegen.h"
 
@@ -233,52 +234,32 @@ esp_err_t custom_prov_data_handler(uint32_t session_id, const uint8_t *inbuf, ss
 
 void lcd_qrcode_display(esp_qrcode_handle_t qrcode)
 {
-    LOG_I("lcd_qrcode_display");
+    int border = 2;
+    int max_size = LCD_WIDTH;
+    if(max_size > LCD_HEIGHT) {
+        max_size = LCD_HEIGHT;
+    }
+    max_size = (int)(max_size * (M_SQRT2 / 2.0f));
 
-    // int border = 2;
-    // int max_size = LCD_WIDTH;
-    // if(max_size > LCD_HEIGHT) {
-    //     max_size = LCD_HEIGHT;
-    // }
-    // max_size = (int)(max_size * (M_SQRT2 / 2.0f));
+    int qr_size = qrcodegen_getSize(qrcode) + border * 2;
+    int dot_size = max_size / qr_size;
+    vec2i rect_size = { dot_size, dot_size };    // the divide rounds down
+    int image_size = qr_size * dot_size;
 
-    // int qr_size = qrcodegen_getSize(qrcode) + border * 2;
-    // int dot_size = max_size / qr_size;    // the divide rounds down
-    // int image_size = qr_size * dot_size;
+    int xorg = (LCD_WIDTH - image_size) / 2;
+    int yorg = (LCD_HEIGHT - image_size) / 2;
 
-    // int xorg = (LCD_WIDTH - image_size) / 2;
-    // int yorg = (LCD_HEIGHT - image_size) / 2;
+    LOG_I("qr_size = %d", qr_size);
 
-    // uint16_t *lcd_buffer;
-    // if(lcd_get_backbuffer(&lcd_buffer, portMAX_DELAY) == ESP_OK) {
-
-    //     LOG_I("Got backbuffer: %p", lcd_buffer);
-
-    //     memset(lcd_buffer, 0x0f, LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t));
-
-    //     uint16_t *row = lcd_buffer + xorg * LCD_WIDTH + yorg;
-
-    //     LOG_I("qr_size = %d", qr_size);
-
-    //     for(int y = 0; y < qr_size; ++y) {
-    //         uint16_t *col = row;
-    //         for(int x = 0; x < qr_size; ++x) {
-    //             uint16_t p = qrcodegen_getModule(qrcode, x - border, y - border) ? 0x0000 : 0xffff;
-    //             uint16_t *d = col;
-    //             for(int iy = 0; iy < dot_size; ++iy) {
-    //                 for(int ix = 0; ix < dot_size; ++ix) {
-    //                     d[ix] = p;
-    //                 }
-    //                 d += LCD_WIDTH;
-    //             }
-    //             col += dot_size;
-    //         }
-    //         row += LCD_WIDTH * dot_size;
-    //     }
-    //     lcd_release_backbuffer_and_update();
-    //     lcd_set_backlight(8191);
-    // }
-    LOG_I("done QR display");
+    for(int y = 0; y < qr_size; ++y) {
+        vec2i pos = { xorg, yorg };
+        for(int x = 0; x < qr_size; ++x) {
+            uint32_t p = qrcodegen_getModule(qrcode, x - border, y - border) ? 0xff000000 : 0xffffffff;
+            display_fillrect(&pos, &rect_size, p, blend_opaque);
+            pos.x += dot_size;
+        }
+        yorg += dot_size;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -480,7 +461,8 @@ void do_connect()
 
 static void mywifi_task(void *param)
 {
-    static char const *TAG = "mywifi_task";
+    LOG_CONTEXT("mywifi_task");
+
     esp_periph_handle_t periph = (esp_periph_handle_t)param;
     LOG_I("here we go...");
     ESP_ERROR_CHECK(esp_event_loop_create_default());
