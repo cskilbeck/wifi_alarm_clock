@@ -84,26 +84,13 @@ extern "C" void app_main(void)
     }
     ESP_ERROR_CHECK(esp_netif_init());
 
-    vs1053_cfg_t cfg = {};
-    cfg.pin_num_cs = GPIO_NUM_21;
-    cfg.pin_num_dcs = GPIO_NUM_38;
-    cfg.pin_num_dreq = GPIO_NUM_47;
-    cfg.pin_num_miso = GPIO_NUM_41;
-    cfg.pin_num_mosi = GPIO_NUM_48;
-    cfg.pin_num_reset = GPIO_NUM_39;
-    cfg.pin_num_sclk = GPIO_NUM_40;
-    cfg.spi_host = SPI3_HOST;
-
-    audio_init(&cfg);
-
+    audio_init();
     display_init();
-
     assets_init();
 
     xTaskCreatePinnedToCore(play_song, "play_song", 4096, nullptr, 5, nullptr, 0);
 
     ui_init();
-
     wifi_init();
 
     int64_t t = esp_timer_get_time();
