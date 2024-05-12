@@ -5,7 +5,9 @@
 #include <freertos/FreeRTOS.h>
 #include "freertos/task.h"
 
+#include "esp_log.h"
 #include "esp_timer.h"
+#include "driver/gpio.h"
 
 #include "util.h"
 #include "display.h"
@@ -14,6 +16,7 @@
 #include "lcd_gc9a01.h"
 #include "ui.h"
 #include "assets.h"
+#include "encoder.h"
 
 LOG_CONTEXT("ui");
 
@@ -26,6 +29,8 @@ namespace
 
     EventGroupHandle_t ui_event_group_handle;
     TaskHandle_t ui_task_handle;
+
+    encoder_handle_t encoder_handle;
 
     //////////////////////////////////////////////////////////////////////
 
@@ -55,13 +60,48 @@ namespace
         bool draw_text = true;
         bool draw_seconds = true;
 
+        encoder_config_t encoder_config = {};
+
+        encoder_config.gpio_a = GPIO_NUM_1;
+        encoder_config.gpio_b = GPIO_NUM_2;
+        encoder_config.gpio_button = GPIO_NUM_42;
+
+        ESP_ERROR_CHECK(encoder_init(&encoder_config, &encoder_handle));
+
+        int seconds = 0;
+
         while(true) {
 
             xEventGroupWaitBits(ui_event_group_handle, 1, 1, 0, portMAX_DELAY);
 
-            display_begin_frame();
+            encoder_message_t msg;
 
-            int seconds = (int)(esp_timer_get_time() / 50000llu) % 60;
+            while(encoder_get_message(encoder_handle, &msg) == ESP_OK) {
+
+                switch(msg) {
+
+                case ENCODER_MSG_PRESS:
+                    seconds = 60;
+                    break;
+
+                case ENCODER_MSG_RELEASE:
+                    seconds = 0;
+                    break;
+
+                case ENCODER_MSG_ROTATE_CW:
+                    seconds = min(60, seconds + 1);
+                    break;
+
+                case ENCODER_MSG_ROTATE_CCW:
+                    seconds = max(0, seconds - 1);
+                    break;
+
+                default:
+                    break;
+                }
+            }
+
+            display_begin_frame();
 
             //////////////////////////////////////////////////////////////////////
 
