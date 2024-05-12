@@ -21,9 +21,9 @@
 #include "util.h"
 #include "audio.h"
 
-LOG_TAG("audio");
+LOG_CONTEXT("audio");
 
-#define AUDIO_LOG ESP_LOGI
+#define AUDIO_LOG LOG_I
 // #define AUDIO_LOG(...)
 
 // #define SWITCH_TO_DECODE_MODE
@@ -438,7 +438,7 @@ namespace
         uint16_t check;
         ESP_RETURN_IF_FAILED(sci_read(reg_num, &check));
         if((value & mask) != (check & mask)) {
-            ESP_LOGE(TAG, "verify failed for register %d: wrote %d (%04x) read back %d (%04x), mask = %04x", reg_num, value, value, check, check, mask);
+            LOG_E("verify failed for register %d: wrote %d (%04x) read back %d (%04x), mask = %04x", reg_num, value, value, check, check, mask);
             return ESP_FAIL;
         }
         return ESP_OK;
@@ -466,7 +466,7 @@ namespace
 
     esp_err_t wram_write(uint16_t addr, uint16_t value)
     {
-        AUDIO_LOG(TAG, "WRAM WRITE %04x = %04x", addr, value);
+        AUDIO_LOG("WRAM WRITE %04x = %04x", addr, value);
         ESP_RETURN_IF_FAILED(sci_write(SCI_WRAMADDR, addr));
         ESP_RETURN_IF_FAILED(sci_write(SCI_WRAM, value));
         return ESP_OK;
@@ -476,7 +476,7 @@ namespace
 
     esp_err_t load_plugin()
     {
-        AUDIO_LOG(TAG, "load plugin");
+        AUDIO_LOG("load plugin");
         int i = 0;
         while(i < PLUGIN_SIZE) {
             uint16_t addr = plugin_data[i++];
@@ -494,7 +494,7 @@ namespace
                 }
             }
         }
-        AUDIO_LOG(TAG, "plugin load complete");
+        AUDIO_LOG("plugin load complete");
 
         wait_for_dreq();
 
@@ -508,7 +508,7 @@ namespace
         uint16_t fill_word;
         ESP_RETURN_IF_FAILED(wram_read_value(PARAMETER_LOCATION_END_FILL_BYTE, &fill_word));
         fill_byte = fill_word & 0xff;
-        AUDIO_LOG(TAG, "Fill byte: %02x", fill_byte);
+        AUDIO_LOG("Fill byte: %02x", fill_byte);
         return ESP_OK;
     }
 
@@ -516,7 +516,7 @@ namespace
 
     esp_err_t startup()
     {
-        ESP_LOGI(TAG, "startup");
+        LOG_I("startup");
 
         ESP_RETURN_IF_NULL(spi_event_group_handle = xEventGroupCreate());
 
@@ -580,7 +580,7 @@ namespace
 
         int low_speed_spi_frequency;
         ESP_RETURN_IF_FAILED(spi_device_get_actual_freq(spi_device, &low_speed_spi_frequency));
-        AUDIO_LOG(TAG, "LOW speed SPI Frequency %d KHz", low_speed_spi_frequency);
+        AUDIO_LOG("LOW speed SPI Frequency %d KHz", low_speed_spi_frequency);
 
         // hard reset VS1053
 
@@ -594,27 +594,27 @@ namespace
 
         // check version == 4
 
-        AUDIO_LOG(TAG, "Check version");
+        AUDIO_LOG("Check version");
 
         int version;
         for(int i = 0; i < 10; ++i) {
             uint16_t status = 0;
             ESP_RETURN_IF_FAILED(sci_read(SCI_STATUS, &status));
             version = SS_VER(status);
-            AUDIO_LOG(TAG, "Got version %d on try %d", version, i);
+            AUDIO_LOG("Got version %d on try %d", version, i);
             if(version == 4) {
                 break;
             }
         }
 
         if(version != 4) {
-            ESP_LOGE(TAG, "1053 version should be 4, got %d", version);
+            LOG_E("1053 version should be 4, got %d", version);
             return ESP_FAIL;
         }
 
 #if defined(SWITCH_TO_DECODE_MODE)
 
-        AUDIO_LOG(TAG, "Switch to decode mode");
+        AUDIO_LOG("Switch to decode mode");
 
         wram_write(WRAM_GPIO_DIR, 3);
         wram_write(WRAM_GPIO_OUT, 0);
@@ -623,7 +623,7 @@ namespace
         // required if pins 33/34 are not pulled low on the board.
         // From the VS1053 datasheet: "If GPIO0 is low and GPIO1 is high during boot, real-time MIDI mode is activated"
 
-        AUDIO_LOG(TAG, "Resetting VS1053");
+        AUDIO_LOG("Resetting VS1053");
 
         vTaskDelay(pdMS_TO_TICKS(100));
 
@@ -633,7 +633,7 @@ namespace
 
         wait_for_dreq();
 
-        AUDIO_LOG(TAG, "VS1053 reset complete");
+        AUDIO_LOG("VS1053 reset complete");
 
 #endif
 
@@ -647,7 +647,7 @@ namespace
 
         // LC Breakout board needs this to enable audio decode mode
 
-        AUDIO_LOG(TAG, "set default volume");
+        AUDIO_LOG("set default volume");
 
         ESP_RETURN_IF_FAILED(sci_write_and_verify(SCI_VOL, 0x5050, 0xffff));
 
@@ -674,7 +674,7 @@ namespace
 
         int high_speed_spi_frequency;
         ESP_RETURN_IF_FAILED(spi_device_get_actual_freq(fast_spi_device, &high_speed_spi_frequency));
-        AUDIO_LOG(TAG, "HIGH speed SPI Frequency %d KHz", high_speed_spi_frequency);
+        AUDIO_LOG("HIGH speed SPI Frequency %d KHz", high_speed_spi_frequency);
 
         spi_device = fast_spi_device;
 
@@ -707,7 +707,7 @@ namespace
 
     void stop_decoding()
     {
-        AUDIO_LOG(TAG, "Stopping...");
+        AUDIO_LOG("Stopping...");
 
         get_fill_byte();
         ending_length = 2052 + 32;
@@ -723,7 +723,7 @@ namespace
 
         // main audio task loop
 
-        AUDIO_LOG(TAG, "MAIN LOOP");
+        AUDIO_LOG("MAIN LOOP");
 
         while(true) {
 
@@ -746,7 +746,7 @@ namespace
                     mode |= SM_CANCEL;
                     sci_write(SCI_MODE, mode);
                 } else if(ending_length == 0) {
-                    AUDIO_LOG(TAG, "finished ending");
+                    AUDIO_LOG("finished ending");
                     playback_ptr = nullptr;
                 }
 
@@ -755,12 +755,12 @@ namespace
                 // if drained ask for more data
 
                 if(playback_remain == 0) {
-                    // AUDIO_LOG(TAG, "ASKING");
+                    // AUDIO_LOG("ASKING");
                     current_chunk = reinterpret_cast<uint8_t *>(xRingbufferReceive(ring_buffer, &playback_remain, 0));
                     if(current_chunk == nullptr) {
                         playback_remain = 0;
                     } else {
-                        // AUDIO_LOG(TAG, "GOT %u bytes", playback_remain);
+                        // AUDIO_LOG("GOT %u bytes", playback_remain);
                         playback_ptr = current_chunk;
                         busy = true;
                     }
@@ -774,7 +774,7 @@ namespace
 
                     busy = true;
 
-                    AUDIO_LOG(TAG, "got msg %d", msg.code);
+                    AUDIO_LOG("got msg %d", msg.code);
 
                     switch(msg.code) {
 
@@ -783,7 +783,7 @@ namespace
                         break;
 
                     case amc_volume:
-                        ESP_LOGI(TAG, "Set volume to %d", msg.volume);
+                        LOG_I("Set volume to %d", msg.volume);
                         sci_write(SCI_VOL, (msg.volume << 8) | msg.volume);
                         break;
 
@@ -827,7 +827,7 @@ namespace
 
 esp_err_t audio_init(vs1053_cfg_t const *cfg)
 {
-    ESP_LOGI(TAG, "init");
+    LOG_I("init");
 
     // copy the config
 
@@ -841,13 +841,13 @@ esp_err_t audio_init(vs1053_cfg_t const *cfg)
 
     ESP_RETURN_IF_NULL(ring_buffer = xRingbufferCreate(65536, RINGBUF_TYPE_NOSPLIT));
 
-    AUDIO_LOG(TAG, "Create audio task");
+    AUDIO_LOG("Create audio task");
 
     // kick off the audio task
 
     BaseType_t r = xTaskCreatePinnedToCore(audio_player, "vs1053", 4096, nullptr, 10, &audio_player_task_handle, 1);
     if(r != pdPASS) {
-        ESP_LOGE(TAG, "xTaskCreate failed: returned %d", r);
+        LOG_E("xTaskCreate failed: returned %d", r);
         return ESP_ERR_NO_MEM;
     }
 
@@ -859,7 +859,7 @@ esp_err_t audio_init(vs1053_cfg_t const *cfg)
 esp_err_t send_audio_msg(audio_message const &msg)
 {
     if(!xQueueSend(audio_command_queue, &msg, portMAX_DELAY)) {
-        ESP_LOGE(TAG, "audio_set_volume: xQueueSend failed");
+        LOG_E("audio_set_volume: xQueueSend failed");
         return ESP_FAIL;
     }
     return ESP_OK;
@@ -871,7 +871,7 @@ esp_err_t audio_set_volume(uint8_t volume)
 {
     assert(audio_command_queue != nullptr);
 
-    ESP_LOGI(TAG, "audio_set_volume %d", volume);
+    LOG_I("audio_set_volume %d", volume);
     audio_message_t msg = {};
     msg.code = amc_volume;
     msg.volume = volume;
@@ -884,7 +884,7 @@ esp_err_t audio_play()
 {
     assert(audio_command_queue != nullptr);
 
-    ESP_LOGI(TAG, "audio_play");
+    LOG_I("audio_play");
     audio_message_t msg = {};
     msg.code = amc_play;
     return send_audio_msg(msg);
@@ -896,7 +896,7 @@ esp_err_t audio_stop()
 {
     assert(audio_command_queue != nullptr);
 
-    ESP_LOGI(TAG, "audio_stop");
+    LOG_I("audio_stop");
     audio_message_t msg = {};
     msg.code = amc_stop;
     return send_audio_msg(msg);
@@ -909,7 +909,7 @@ esp_err_t audio_acquire_buffer(size_t required, uint8_t **ptr, TickType_t ticks_
     assert(audio_command_queue != nullptr);
 
     if(xRingbufferSendAcquire(ring_buffer, reinterpret_cast<void **>(ptr), required, ticks_to_wait) == pdFALSE) {
-        ESP_LOGI(TAG, "can't acquire %u bytes", required);
+        LOG_E("can't acquire %u bytes", required);
         return ESP_ERR_TIMEOUT;
     }
     return ESP_OK;

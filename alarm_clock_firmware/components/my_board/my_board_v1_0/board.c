@@ -24,6 +24,7 @@
 
 #include "esp_log.h"
 #include "board.h"
+#include "util.h"
 #include "audio_mem.h"
 
 #include "periph_sdcard.h"
@@ -31,40 +32,40 @@
 #include "periph_encoder.h"
 #include "periph_mywifi.h"
 
-static const char *TAG = "AUDIO_BOARD";
+LOG_CONTEXT("AUDIO_BOARD");
 
 static audio_board_handle_t board_handle = 0;
 
 audio_board_handle_t audio_board_init(void)
 {
-    ESP_LOGW(TAG, "audio_board_init");
+    LOG_W("audio_board_init");
     vTaskDelay(10);
 
     if(board_handle) {
-        ESP_LOGW(TAG, "The board has already been initialized!");
+        LOG_W("The board has already been initialized!");
         return board_handle;
     }
     board_handle = (audio_board_handle_t)audio_calloc(1, sizeof(struct audio_board_handle));
 
-    ESP_LOGW(TAG, "audio_calloc OK");
+    LOG_W("audio_calloc OK");
     vTaskDelay(10);
 
-    AUDIO_MEM_CHECK(TAG, board_handle, return NULL);
+    AUDIO_MEM_CHECK(LOG_TAG, board_handle, return NULL);
     board_handle->audio_hal = audio_board_codec_init();
 
-    ESP_LOGI(TAG, "audio_board_init complete");
+    LOG_I("audio_board_init complete");
 
     return board_handle;
 }
 
 audio_hal_handle_t audio_board_codec_init(void)
 {
-    ESP_LOGI(TAG, "audio_board_codec_init");
+    LOG_I("audio_board_codec_init");
     audio_hal_codec_config_t audio_codec_cfg = AUDIO_CODEC_DEFAULT_CONFIG();
     audio_hal_handle_t codec_hal = audio_hal_init(&audio_codec_cfg, &AUDIO_NEW_CODEC_DEFAULT_HANDLE);
-    AUDIO_NULL_CHECK(TAG, codec_hal, return NULL);
+    AUDIO_NULL_CHECK(LOG_TAG, codec_hal, return NULL);
 
-    ESP_LOGI(TAG, "audio_board_codec_init complete");
+    LOG_I("audio_board_codec_init complete");
 
     return codec_hal;
 }
@@ -81,32 +82,32 @@ esp_err_t audio_board_key_init(esp_periph_set_handle_t set)
     adc_btn_cfg.arr = &adc_btn_tag;
     adc_btn_cfg.arr_size = 1;
     esp_periph_handle_t adc_btn_handle = periph_adc_button_init(&adc_btn_cfg);
-    AUDIO_NULL_CHECK(TAG, adc_btn_handle, return ESP_ERR_ADF_MEMORY_LACK);
+    AUDIO_NULL_CHECK(LOG_TAG, adc_btn_handle, return ESP_ERR_ADF_MEMORY_LACK);
     ret = esp_periph_start(set, adc_btn_handle);
     return ret;
 }
 
 esp_err_t audio_board_encoder_init(esp_periph_set_handle_t set)
 {
-    ESP_LOGI(TAG, "audio_board_encoder_init");
+    LOG_I("audio_board_encoder_init");
 
     esp_err_t ret = ESP_OK;
     periph_encoder_cfg_t encoder_cfg = {};
     encoder_cfg.gpio_num_a = 1;
     encoder_cfg.gpio_num_b = 2;
     esp_periph_handle_t encoder_handle = periph_encoder_init(&encoder_cfg);
-    AUDIO_NULL_CHECK(TAG, encoder_handle, return ESP_ERR_ADF_MEMORY_LACK);
+    AUDIO_NULL_CHECK(LOG_TAG, encoder_handle, return ESP_ERR_ADF_MEMORY_LACK);
     ret = esp_periph_start(set, encoder_handle);
     return ret;
 }
 
 esp_err_t audio_board_mywifi_init(esp_periph_set_handle_t set)
 {
-    ESP_LOGI(TAG, "audio_board_encoder_init");
+    LOG_I("audio_board_encoder_init");
 
     esp_err_t ret = ESP_OK;
     esp_periph_handle_t mywifi_handle = periph_mywifi_init();
-    AUDIO_NULL_CHECK(TAG, mywifi_handle, return ESP_ERR_ADF_MEMORY_LACK);
+    AUDIO_NULL_CHECK(LOG_TAG, mywifi_handle, return ESP_ERR_ADF_MEMORY_LACK);
     ret = esp_periph_start(set, mywifi_handle);
     return ret;
 }

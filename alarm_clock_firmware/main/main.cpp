@@ -28,7 +28,7 @@
 #include "audio.h"
 #include "display.h"
 
-LOG_TAG("main");
+LOG_CONTEXT("main");
 
 //////////////////////////////////////////////////////////////////////
 
@@ -184,7 +184,7 @@ void play_song(void *)
     // size_t remain = example_mp3_size;
     size_t remain = 200000;
 
-    ESP_LOGI(TAG, "Play song %u bytes", example_mp3_size);
+    LOG_I("Play song %u bytes", example_mp3_size);
 
     audio_play();
 
@@ -198,7 +198,7 @@ void play_song(void *)
             src += fragment;
             remain -= fragment;
         } else {
-            ESP_LOGE(TAG, "Huh?");
+            LOG_E("Huh?");
             vTaskDelay(pdMS_TO_TICKS(100));
         }
     }
@@ -212,7 +212,7 @@ extern "C" void app_main(void)
 {
     esp_log_level_set("*", ESP_LOG_INFO);
 
-    ESP_LOGI(TAG, "app_main");
+    LOG_I("app_main");
 
     led_init();
     led_set_on();

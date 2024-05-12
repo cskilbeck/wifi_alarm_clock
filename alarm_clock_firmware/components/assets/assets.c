@@ -8,7 +8,7 @@
 #include "Big.c"
 #include "Forte.c"
 
-LOG_TAG("assets");
+LOG_CONTEXT("assets");
 
 //////////////////////////////////////////////////////////////////////
 

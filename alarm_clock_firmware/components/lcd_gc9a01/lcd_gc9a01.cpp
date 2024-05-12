@@ -21,7 +21,7 @@
 #include "lcd_gc9a01.h"
 #include "util.h"
 
-LOG_TAG("lcd");
+LOG_CONTEXT("lcd");
 
 //////////////////////////////////////////////////////////////////////
 // LCD SPI
@@ -309,7 +309,7 @@ namespace
 
 esp_err_t lcd_init()
 {
-    ESP_LOGI(TAG, "INIT");
+    LOG_I("INIT");
 
     ESP_ERROR_CHECK(init_backlight_pwm());
 

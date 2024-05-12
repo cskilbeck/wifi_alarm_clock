@@ -10,16 +10,17 @@
 #include <wifi_provisioning/manager.h>
 #include <wifi_provisioning/scheme_ble.h>
 
+#include "util.h"
 #include "lcd_gc9a01.h"
 #include "qrcode.h"
 #include "../qrcodegen.h"
 
-static const char *TAG = "periph_mywifi";
+LOG_CONTEXT("periph_mywifi");
 
-#define VALIDATE_ENCODER(periph, ret)                                  \
-    if(!(periph && esp_periph_get_id(periph) == PERIPH_ID_MYWIFI)) {   \
-        ESP_LOGE(TAG, "Invalid ENCODER periph, at line %d", __LINE__); \
-        return ret;                                                    \
+#define VALIDATE_WIFI(periph, ret)                                         \
+    if(!(periph && esp_periph_get_id(periph) == PERIPH_ID_MYWIFI)) {       \
+        ESP_LOGE(LOG_TAG, "Invalid ENCODER periph, at line %d", __LINE__); \
+        return ret;                                                        \
     }
 
 // Signal Wi-Fi events on this event-group
@@ -69,12 +70,12 @@ static const char sec2_verifier[] = {
 static esp_err_t example_get_sec2_salt(const char **salt, uint16_t *salt_len)
 {
 #if CONFIG_EXAMPLE_PROV_SEC2_DEV_MODE
-    ESP_LOGI(TAG, "Development mode: using hard coded salt");
+    LOG_I("Development mode: using hard coded salt");
     *salt = sec2_salt;
     *salt_len = sizeof(sec2_salt);
     return ESP_OK;
 #elif CONFIG_EXAMPLE_PROV_SEC2_PROD_MODE
-    ESP_LOGE(TAG, "Not implemented!");
+    LOG_E("Not implemented!");
     return ESP_FAIL;
 #endif
 }
@@ -84,13 +85,13 @@ static esp_err_t example_get_sec2_salt(const char **salt, uint16_t *salt_len)
 static esp_err_t example_get_sec2_verifier(const char **verifier, uint16_t *verifier_len)
 {
 #if CONFIG_EXAMPLE_PROV_SEC2_DEV_MODE
-    ESP_LOGI(TAG, "Development mode: using hard coded verifier");
+    LOG_I("Development mode: using hard coded verifier");
     *verifier = sec2_verifier;
     *verifier_len = sizeof(sec2_verifier);
     return ESP_OK;
 #elif CONFIG_EXAMPLE_PROV_SEC2_PROD_MODE
     /* This code needs to be updated with appropriate implementation to provide verifier */
-    ESP_LOGE(TAG, "Not implemented!");
+    LOG_E("Not implemented!");
     return ESP_FAIL;
 #endif
 }
@@ -107,33 +108,31 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id
         switch(event_id) {
 
         case WIFI_PROV_START:
-            ESP_LOGI(TAG, "Provisioning started");
+            LOG_I("Provisioning started");
             break;
 
         case WIFI_PROV_CRED_RECV: {
             wifi_sta_config_t *wifi_sta_cfg = (wifi_sta_config_t *)event_data;
-            ESP_LOGI(TAG,
-                     "Received Wi-Fi credentials"
-                     "\n\tSSID     : %s\n\tPassword : %s",
-                     (const char *)wifi_sta_cfg->ssid, (const char *)wifi_sta_cfg->password);
+            LOG_I("Received Wi-Fi credentials"
+                  "\n\tSSID     : %s\n\tPassword : %s",
+                  (const char *)wifi_sta_cfg->ssid, (const char *)wifi_sta_cfg->password);
             break;
         }
         case WIFI_PROV_CRED_FAIL: {
             wifi_prov_sta_fail_reason_t *reason = (wifi_prov_sta_fail_reason_t *)event_data;
-            ESP_LOGE(TAG,
-                     "Provisioning failed!\n\tReason : %s"
-                     "\n\tPlease reset to factory and retry provisioning",
-                     (*reason == WIFI_PROV_STA_AUTH_ERROR) ? "Wi-Fi station authentication failed" : "Wi-Fi access-point not found");
+            LOG_E("Provisioning failed!\n\tReason : %s"
+                  "\n\tPlease reset to factory and retry provisioning",
+                  (*reason == WIFI_PROV_STA_AUTH_ERROR) ? "Wi-Fi station authentication failed" : "Wi-Fi access-point not found");
             retries++;
             if(retries >= CONFIG_EXAMPLE_PROV_MGR_MAX_RETRY_CNT) {
-                ESP_LOGI(TAG, "Failed to connect with provisioned AP, reseting provisioned credentials");
+                LOG_I("Failed to connect with provisioned AP, reseting provisioned credentials");
                 wifi_prov_mgr_reset_sm_state_on_failure();
                 retries = 0;
             }
             break;
         }
         case WIFI_PROV_CRED_SUCCESS:
-            ESP_LOGI(TAG, "Provisioning successful");
+            LOG_I("Provisioning successful");
             retries = 0;
             break;
         case WIFI_PROV_END:
@@ -149,7 +148,7 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id
             esp_wifi_connect();
             break;
         case WIFI_EVENT_STA_DISCONNECTED:
-            ESP_LOGI(TAG, "Disconnected.");
+            LOG_I("Disconnected.");
             xEventGroupClearBits(wifi_event_group, WIFI_CONNECTED_EVENT);
             xEventGroupSetBits(wifi_event_group, WIFI_DISCONNECTED_EVENT);
             esp_wifi_connect();
@@ -159,16 +158,16 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id
         }
     } else if(event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
-        ESP_LOGI(TAG, "Connected with IP Address:" IPSTR, IP2STR(&event->ip_info.ip));
+        LOG_I("Connected with IP Address:" IPSTR, IP2STR(&event->ip_info.ip));
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_EVENT);
 
     } else if(event_base == PROTOCOMM_TRANSPORT_BLE_EVENT) {
         switch(event_id) {
         case PROTOCOMM_TRANSPORT_BLE_CONNECTED:
-            ESP_LOGI(TAG, "BLE transport: Connected!");
+            LOG_I("BLE transport: Connected!");
             break;
         case PROTOCOMM_TRANSPORT_BLE_DISCONNECTED:
-            ESP_LOGI(TAG, "BLE transport: Disconnected!");
+            LOG_I("BLE transport: Disconnected!");
             break;
         default:
             break;
@@ -176,13 +175,13 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id
     } else if(event_base == PROTOCOMM_SECURITY_SESSION_EVENT) {
         switch(event_id) {
         case PROTOCOMM_SECURITY_SESSION_SETUP_OK:
-            ESP_LOGI(TAG, "Secured session established!");
+            LOG_I("Secured session established!");
             break;
         case PROTOCOMM_SECURITY_SESSION_INVALID_SECURITY_PARAMS:
-            ESP_LOGE(TAG, "Received invalid security parameters for establishing secure session!");
+            LOG_E("Received invalid security parameters for establishing secure session!");
             break;
         case PROTOCOMM_SECURITY_SESSION_CREDENTIALS_MISMATCH:
-            ESP_LOGE(TAG, "Received incorrect username and/or PoP for establishing secure session!");
+            LOG_E("Received incorrect username and/or PoP for establishing secure session!");
             break;
         default:
             break;
@@ -217,12 +216,12 @@ void get_device_service_name(char *service_name, size_t max)
 esp_err_t custom_prov_data_handler(uint32_t session_id, const uint8_t *inbuf, ssize_t inlen, uint8_t **outbuf, ssize_t *outlen, void *priv_data)
 {
     if(inbuf) {
-        ESP_LOGI(TAG, "Received data: %.*s", inlen, (char *)inbuf);
+        LOG_I("Received data: %.*s", inlen, (char *)inbuf);
     }
     char response[] = "SUCCESS";
     *outbuf = (uint8_t *)strdup(response);
     if(*outbuf == NULL) {
-        ESP_LOGE(TAG, "System out of memory");
+        LOG_E("System out of memory");
         return ESP_ERR_NO_MEM;
     }
     *outlen = strlen(response) + 1; /* +1 for NULL terminating byte */
@@ -234,7 +233,7 @@ esp_err_t custom_prov_data_handler(uint32_t session_id, const uint8_t *inbuf, ss
 
 void lcd_qrcode_display(esp_qrcode_handle_t qrcode)
 {
-    ESP_LOGI(TAG, "lcd_qrcode_display");
+    LOG_I("lcd_qrcode_display");
 
     // int border = 2;
     // int max_size = LCD_WIDTH;
@@ -253,13 +252,13 @@ void lcd_qrcode_display(esp_qrcode_handle_t qrcode)
     // uint16_t *lcd_buffer;
     // if(lcd_get_backbuffer(&lcd_buffer, portMAX_DELAY) == ESP_OK) {
 
-    //     ESP_LOGI(TAG, "Got backbuffer: %p", lcd_buffer);
+    //     LOG_I("Got backbuffer: %p", lcd_buffer);
 
     //     memset(lcd_buffer, 0x0f, LCD_WIDTH * LCD_HEIGHT * sizeof(uint16_t));
 
     //     uint16_t *row = lcd_buffer + xorg * LCD_WIDTH + yorg;
 
-    //     ESP_LOGI(TAG, "qr_size = %d", qr_size);
+    //     LOG_I("qr_size = %d", qr_size);
 
     //     for(int y = 0; y < qr_size; ++y) {
     //         uint16_t *col = row;
@@ -279,7 +278,7 @@ void lcd_qrcode_display(esp_qrcode_handle_t qrcode)
     //     lcd_release_backbuffer_and_update();
     //     lcd_set_backlight(8191);
     // }
-    ESP_LOGI(TAG, "done QR display");
+    LOG_I("done QR display");
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -287,7 +286,7 @@ void lcd_qrcode_display(esp_qrcode_handle_t qrcode)
 static void wifi_prov_print_qr(const char *name, const char *username, const char *pop, const char *transport)
 {
     if(!name || !transport) {
-        ESP_LOGW(TAG, "Cannot generate QR code payload. Data missing.");
+        LOG_W("Cannot generate QR code payload. Data missing.");
         return;
     }
     char payload[150] = { 0 };
@@ -345,7 +344,7 @@ void do_connect()
      * configuration parameters set above */
     ESP_ERROR_CHECK(wifi_prov_mgr_init(config));
 
-    ESP_LOGI(TAG, "wifi_prov_mgr_init complete");
+    LOG_I("wifi_prov_mgr_init complete");
 
     bool provisioned = false;
 
@@ -354,7 +353,7 @@ void do_connect()
     // If device is not yet provisioned start provisioning service
     if(!provisioned) {
 
-        ESP_LOGI(TAG, "Starting provisioning");
+        LOG_I("Starting provisioning");
 
         // What is the Device Service Name that we want
         // This translates to :
@@ -448,7 +447,7 @@ void do_connect()
 
     } else {
 
-        ESP_LOGI(TAG, "Already provisioned, starting Wi-Fi STA");
+        LOG_I("Already provisioned, starting Wi-Fi STA");
 
         // device is already provisioned, release prov_mgr resources
         wifi_prov_mgr_deinit();
@@ -461,7 +460,7 @@ void do_connect()
 #if CONFIG_EXAMPLE_REPROVISIONING
     while(1) {
         for(int i = 0; i < 10; i++) {
-            ESP_LOGI(TAG, "Hello World!");
+            LOG_I("Hello World!");
             vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
 
@@ -483,11 +482,11 @@ static void mywifi_task(void *param)
 {
     static char const *TAG = "mywifi_task";
     esp_periph_handle_t periph = (esp_periph_handle_t)param;
-    ESP_LOGI(TAG, "here we go...");
+    LOG_I("here we go...");
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     wifi_event_group = xEventGroupCreate();
 
-    ESP_LOGI(TAG, "wifi init 2");
+    LOG_I("wifi init 2");
 
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_PROV_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(PROTOCOMM_TRANSPORT_BLE_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
@@ -495,15 +494,15 @@ static void mywifi_task(void *param)
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL));
 
-    ESP_LOGI(TAG, "wifi init 3");
+    LOG_I("wifi init 3");
 
     esp_netif_create_default_wifi_sta();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-    ESP_LOGI(TAG, "wifi init 4");
+    LOG_I("wifi init 4");
 
-    ESP_LOGI(TAG, "wifi init complete");
+    LOG_I("wifi init complete");
 
     do_connect();
 
@@ -511,10 +510,10 @@ static void mywifi_task(void *param)
 
         uint32_t got_bits = xEventGroupWaitBits(wifi_event_group, WIFI_ANY_BIT, true, false, portMAX_DELAY);
 
-        ESP_LOGI(TAG, "GOT:%08lx", got_bits);
+        LOG_I("GOT:%08lx", got_bits);
 
         if(got_bits & WIFI_CONNECTED_EVENT) {
-            ESP_LOGI(TAG, "CONNECTED!?");
+            LOG_I("CONNECTED!?");
             esp_periph_send_cmd(periph, PERIPH_MYWIFI_CONNECTED, NULL, 0);
         }
 
@@ -526,32 +525,32 @@ static void mywifi_task(void *param)
 
 static esp_err_t _mywifi_init(esp_periph_handle_t self)
 {
-    ESP_LOGI(TAG, "init");
+    LOG_I("init");
 
-    VALIDATE_ENCODER(self, ESP_FAIL);
+    VALIDATE_WIFI(self, ESP_FAIL);
     xTaskCreate(mywifi_task, "mywifi", 4096, self, 10, NULL);
     return ESP_OK;
 }
 
 static esp_err_t _mywifi_run(esp_periph_handle_t self, audio_event_iface_msg_t *msg)
 {
-    ESP_LOGI(TAG, "RUN!");
+    LOG_I("RUN!");
     esp_periph_send_event(self, msg->cmd, NULL, 0);
     return ESP_OK;
 }
 
 static esp_err_t _mywifi_destroy(esp_periph_handle_t self)
 {
-    ESP_LOGI(TAG, "destroy");
+    LOG_I("destroy");
     return ESP_OK;
 }
 
 esp_periph_handle_t periph_mywifi_init()
 {
-    ESP_LOGI(TAG, "periph_mywifi_init");
+    LOG_I("periph_mywifi_init");
 
     esp_periph_handle_t periph = esp_periph_create(PERIPH_ID_MYWIFI, "periph_mywifi");
-    AUDIO_MEM_CHECK(TAG, periph, return NULL);
+    AUDIO_MEM_CHECK(LOG_TAG, periph, return NULL);
     esp_periph_set_data(periph, NULL);
     esp_periph_set_function(periph, _mywifi_init, _mywifi_run, _mywifi_destroy);
 

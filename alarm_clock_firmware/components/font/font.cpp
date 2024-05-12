@@ -10,7 +10,7 @@
 #include "font.h"
 #include "display.h"
 
-LOG_TAG("font");
+LOG_CONTEXT("font");
 
 //////////////////////////////////////////////////////////////////////
 
@@ -70,7 +70,7 @@ void font_measure_string(font_handle_t fnt, uint8_t const *text, vec2i *size)
 
 esp_err_t font_init(font_data const *fnt, char const *name, uint8_t const *png_start, uint8_t const *png_end, font_handle_t *handle)
 {
-    ESP_LOGD(TAG, "init font %s", name);
+    LOG_D("init font %s", name);
 
     if(handle == nullptr) {
         return ESP_ERR_INVALID_ARG;

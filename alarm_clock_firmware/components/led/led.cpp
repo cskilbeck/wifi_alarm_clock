@@ -7,11 +7,12 @@
 #include "soc/gpio_periph.h"
 #include "esp_rom_gpio.h"
 
+#include "util.h"
 #include "led.h"
 
 //////////////////////////////////////////////////////////////////////
 
-static char const *TAG = "led";
+LOG_CONTEXT("led");
 
 #define LED_PIN ((gpio_num_t)7)
 
@@ -26,7 +27,7 @@ namespace
 
 esp_err_t led_init()
 {
-    ESP_LOGI(TAG, "init");
+    LOG_I("init");
 
     esp_rom_gpio_pad_select_gpio(LED_PIN);
 

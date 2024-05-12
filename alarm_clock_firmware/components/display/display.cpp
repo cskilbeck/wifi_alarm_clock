@@ -27,7 +27,7 @@
 #include "lcd_gc9a01.h"
 #include "display.h"
 
-LOG_TAG("display");
+LOG_CONTEXT("display");
 
 //////////////////////////////////////////////////////////////////////
 

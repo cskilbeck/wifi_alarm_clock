@@ -69,7 +69,13 @@ template <typename T, std::size_t N> constexpr std::size_t countof(T const (&)[N
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
-#define LOG_TAG(x) static const char *TAG __attribute__((unused)) = x
+#define LOG_CONTEXT(x) static const char *LOG_TAG __attribute__((unused)) = x
+
+#define LOG_E(...) ESP_LOGE(LOG_TAG, __VA_ARGS__)
+#define LOG_W(...) ESP_LOGW(LOG_TAG, __VA_ARGS__)
+#define LOG_I(...) ESP_LOGI(LOG_TAG, __VA_ARGS__)
+#define LOG_D(...) ESP_LOGD(LOG_TAG, __VA_ARGS__)
+#define LOG_V(...) ESP_LOGV(LOG_TAG, __VA_ARGS__)
 
 // return if failed
 

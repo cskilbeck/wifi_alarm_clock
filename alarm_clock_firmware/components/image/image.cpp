@@ -10,7 +10,7 @@
 #include "image.h"
 #include "util.h"
 
-static char const *TAG = "image";
+LOG_CONTEXT("image");
 
 //////////////////////////////////////////////////////////////////////
 
@@ -78,12 +78,12 @@ esp_err_t image_decode_png(int *out_image_id, uint8_t const *png_data, size_t pn
     int err = pngle_feed(pngle, png_data, png_size);
 
     if(err < 0) {
-        ESP_LOGE(TAG, "PNGLE Error %d", err);
+        LOG_E("PNGLE Error %d", err);
         return ESP_FAIL;
     }
     pngle_destroy(pngle);
 
-    ESP_LOGD(TAG, "Decoded PNG id %d (%dx%d)", new_image_id, new_image->width, new_image->height);
+    LOG_D("Decoded PNG id %d (%dx%d)", new_image_id, new_image->width, new_image->height);
 
     new_image->image_id = new_image_id;
     *out_image_id = new_image_id;

@@ -40,7 +40,7 @@
 #include "assets.h"
 #include "util.h"
 
-LOG_TAG("stream");
+LOG_CONTEXT("stream");
 
 //////////////////////////////////////////////////////////////////////
 
@@ -164,7 +164,7 @@ static void stream_task(void *)
 
                     audio_element_info_t info;
                     audio_element_getinfo(audio_decoder, &info);
-                    ESP_LOGI(TAG, "STREAM: sample_rate %d, bits=%d, ch=%d", info.sample_rates, info.bits, info.channels);
+                    LOG_I("STREAM: sample_rate %d, bits=%d, ch=%d", info.sample_rates, info.bits, info.channels);
                     rsp_filter_set_src_info(rsp_filter, info.sample_rates, info.channels);
                     i2s_stream_set_clk(i2s_stream_writer, PLAYBACK_RATE, PLAYBACK_BITS, PLAYBACK_CHANNEL);
                 } break;
@@ -179,7 +179,7 @@ static void stream_task(void *)
 
                 case AEL_MSG_CMD_REPORT_STATUS: {
                     if((int)msg.data == AEL_STATUS_STATE_FINISHED) {
-                        ESP_LOGW(TAG, "Restart stream");
+                        LOG_W("Restart stream");
                         audio_pipeline_stop(pipeline);
                         audio_pipeline_wait_for_stop(pipeline);
                         audio_element_reset_state(audio_decoder);
@@ -198,7 +198,7 @@ static void stream_task(void *)
 
         case PERIPH_ID_MYWIFI: {
 
-            ESP_LOGI(TAG, "MYWIFI says %d", msg.cmd);
+            LOG_I("MYWIFI says %d", msg.cmd);
 
             switch(msg.cmd) {
 

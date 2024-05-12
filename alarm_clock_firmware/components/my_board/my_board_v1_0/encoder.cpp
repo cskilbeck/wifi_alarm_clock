@@ -7,11 +7,12 @@
 #include "esp_rom_gpio.h"
 #include "audio_mem.h"
 
+#include "util.h"
 #include "encoder.h"
 
 //////////////////////////////////////////////////////////////////////
 
-static char const *TAG = "encoder";
+LOG_CONTEXT("encoder");
 
 //////////////////////////////////////////////////////////////////////
 
@@ -45,7 +46,7 @@ int IRAM_ATTR encoder_read(esp_encoder_handle_t encoder, int bits)
 
 esp_err_t encoder_init(encoder_config_t *cfg, esp_encoder_handle_t *handle)
 {
-    ESP_LOGI(TAG, "init");
+    LOG_I("init");
 
     esp_encoder_handle_t encoder = (esp_encoder_handle_t)audio_calloc(1, sizeof(struct esp_encoder));
 
@@ -62,7 +63,7 @@ esp_err_t encoder_init(encoder_config_t *cfg, esp_encoder_handle_t *handle)
     gpio_config(&gpiocfg);
 
     if(cfg->encoder_intr_handler) {
-        ESP_LOGI(TAG, "Adding GPIO interrupt handlers");
+        LOG_I("Adding GPIO interrupt handlers");
         gpio_set_intr_type(cfg->gpio_a, GPIO_INTR_ANYEDGE);
         gpio_set_intr_type(cfg->gpio_b, GPIO_INTR_ANYEDGE);
         gpio_isr_handler_add(cfg->gpio_a, cfg->encoder_intr_handler, cfg->intr_context);
@@ -70,7 +71,7 @@ esp_err_t encoder_init(encoder_config_t *cfg, esp_encoder_handle_t *handle)
         gpio_intr_enable(cfg->gpio_a);
         gpio_intr_enable(cfg->gpio_b);
     }
-    ESP_LOGI(TAG, "init done");
+    LOG_I("init done");
 
     *handle = encoder;
 
@@ -81,7 +82,7 @@ esp_err_t encoder_init(encoder_config_t *cfg, esp_encoder_handle_t *handle)
 
 esp_err_t encoder_destroy(esp_encoder_handle_t encoder)
 {
-    ESP_LOGI(TAG, "destroy");
+    LOG_I("destroy");
     audio_free(encoder);
     return ESP_OK;
 }

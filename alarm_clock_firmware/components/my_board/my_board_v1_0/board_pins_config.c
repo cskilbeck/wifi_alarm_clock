@@ -4,17 +4,18 @@
 #include "driver/gpio.h"
 #include <string.h>
 #include "board.h"
+#include "util.h"
 #include "audio_error.h"
 #include "audio_mem.h"
 #include "soc/soc_caps.h"
 
-static const char *TAG = "MY_BOARD_V1_0";
+LOG_CONTEXT("MY_BOARD_V1_0");
 
 //////////////////////////////////////////////////////////////////////
 
 esp_err_t get_i2s_pins(int port, board_i2s_pin_t *i2s_config)
 {
-    AUDIO_NULL_CHECK(TAG, i2s_config, return ESP_FAIL);
+    AUDIO_NULL_CHECK(LOG_TAG, i2s_config, return ESP_FAIL);
     if(port == 0) {
         i2s_config->mck_io_num = -1;
         i2s_config->data_in_num = -1;
@@ -28,7 +29,7 @@ esp_err_t get_i2s_pins(int port, board_i2s_pin_t *i2s_config)
         i2s_config->data_in_num = -1;
     } else {
         memset(i2s_config, -1, sizeof(board_i2s_pin_t));
-        ESP_LOGE(TAG, "i2s port %d is not supported", port);
+        LOG_E("i2s port %d is not supported", port);
         return ESP_FAIL;
     }
 

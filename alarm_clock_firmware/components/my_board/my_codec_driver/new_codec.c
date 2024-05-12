@@ -26,11 +26,12 @@
 #include "esp_log.h"
 #include "driver/i2c.h"
 #include "driver/gpio.h"
+#include "util.h"
 #include "board.h"
 
 #include "new_codec.h"
 
-static const char *TAG = "new_codec";
+LOG_CONTEXT("new_codec");
 
 static bool codec_init_flag;
 
@@ -51,7 +52,7 @@ bool new_codec_initialized()
 
 esp_err_t new_codec_init(audio_hal_codec_config_t *cfg)
 {
-    ESP_LOGI(TAG, "new_codec init");
+    LOG_I("new_codec init");
     return ESP_OK;
 }
 

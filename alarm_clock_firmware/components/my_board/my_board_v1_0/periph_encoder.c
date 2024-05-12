@@ -23,16 +23,17 @@
  */
 
 #include "esp_log.h"
+#include "util.h"
 #include "encoder.h"
 #include "periph_encoder.h"
 #include "audio_mem.h"
 
-static const char *TAG = "PERIPH_ENCODER";
+LOG_CONTEXT("PERIPH_ENCODER");
 
-#define VALIDATE_ENCODER(periph, ret)                                  \
-    if(!(periph && esp_periph_get_id(periph) == PERIPH_ID_ENCODER)) {  \
-        ESP_LOGE(TAG, "Invalid ENCODER periph, at line %d", __LINE__); \
-        return ret;                                                    \
+#define VALIDATE_ENCODER(periph, ret)                                 \
+    if(!(periph && esp_periph_get_id(periph) == PERIPH_ID_ENCODER)) { \
+        LOG_E("Invalid ENCODER periph, at line %d", __LINE__);        \
+        return ret;                                                   \
     }
 
 typedef struct
@@ -68,7 +69,7 @@ static esp_err_t _encoder_run(esp_periph_handle_t self, audio_event_iface_msg_t 
 
 static esp_err_t _encoder_destroy(esp_periph_handle_t self)
 {
-    ESP_LOGI(TAG, "destroy");
+    LOG_I("destroy");
     periph_encoder_t *periph_encoder = esp_periph_get_data(self);
     encoder_destroy(periph_encoder->encoder);
     audio_free(periph_encoder);
@@ -77,7 +78,7 @@ static esp_err_t _encoder_destroy(esp_periph_handle_t self)
 
 static esp_err_t _encoder_init(esp_periph_handle_t self)
 {
-    ESP_LOGI(TAG, "init");
+    LOG_I("init");
 
     VALIDATE_ENCODER(self, ESP_FAIL);
     periph_encoder_t *periph_encoder = esp_periph_get_data(self);
@@ -93,13 +94,13 @@ static esp_err_t _encoder_init(esp_periph_handle_t self)
 
 esp_periph_handle_t periph_encoder_init(periph_encoder_cfg_t *config)
 {
-    ESP_LOGI(TAG, "periph_encoder_init");
+    LOG_I("periph_encoder_init");
 
     esp_periph_handle_t periph = esp_periph_create(PERIPH_ID_ENCODER, "periph_encoder");
-    AUDIO_MEM_CHECK(TAG, periph, return NULL);
+    AUDIO_MEM_CHECK(LOG_TAG, periph, return NULL);
     periph_encoder_t *periph_encoder = audio_calloc(1, sizeof(periph_encoder_t));
 
-    AUDIO_MEM_CHECK(TAG, periph_encoder, {
+    AUDIO_MEM_CHECK(LOG_TAG, periph_encoder, {
         audio_free(periph);
         return NULL;
     });
