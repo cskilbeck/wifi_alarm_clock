@@ -11,6 +11,13 @@ extern "C" {
 
 esp_err_t ui_init();
 
+struct ui_element
+{
+    void *data;
+    void *on_draw;
+    struct ui_element *next;
+};
+
 #if defined(__cplusplus)
 }
 #endif

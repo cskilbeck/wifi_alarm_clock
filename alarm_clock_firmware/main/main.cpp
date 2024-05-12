@@ -15,11 +15,8 @@
 #include <driver/gpio.h>
 #include <driver/spi_master.h>
 
-#include "board.h"
-
 #include "led.h"
 #include "encoder.h"
-#include "stream.h"
 #include "image.h"
 #include "assets.h"
 #include "font.h"
@@ -28,6 +25,7 @@
 #include "audio.h"
 #include "display.h"
 #include "ui.h"
+#include "wifi.h"
 
 LOG_CONTEXT("main");
 
@@ -39,11 +37,11 @@ LOG_CONTEXT("main");
 
 void play_song(void *)
 {
-    uint8_t const *src = example_mp3_start;
-    // size_t remain = example_mp3_size;
-    size_t remain = 200000;
+    uint8_t const *src = boing_mp3_start;
+    size_t remain = boing_mp3_size;
+    // size_t remain = 200000;
 
-    LOG_I("Play song %u bytes", example_mp3_size);
+    LOG_I("Play song %u bytes", boing_mp3_size);
 
     audio_play();
 
@@ -63,6 +61,7 @@ void play_song(void *)
     }
     size_t free_space = heap_caps_get_free_size(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
     LOG_I("Free space: %u (%uKB)", free_space, free_space / 1024);
+    vTaskDelay(pdMS_TO_TICKS(1000));
     audio_stop();
     vTaskDelay(portMAX_DELAY);
 }
@@ -103,12 +102,13 @@ extern "C" void app_main(void)
 
     xTaskCreatePinnedToCore(play_song, "play_song", 4096, nullptr, 5, nullptr, 0);
 
+    ui_init();
+
+    wifi_init();
+
     int64_t t = esp_timer_get_time();
     int64_t now;
-
     int64_t fade_time_uS = 500000ll;
-
-    ui_init();
 
     while((now = esp_timer_get_time() - t) <= fade_time_uS) {
         uint32_t b = min(8191lu, (uint32_t)(now * 9500 / fade_time_uS));

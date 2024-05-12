@@ -1,2 +1,2 @@
-PROJECT_NAME := play_mp3_control
-include $(ADF_PATH)/project.mk
+PROJECT_NAME := wifi_alarm_clock
+include $(IDF_PATH)/project.mk

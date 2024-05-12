@@ -53,8 +53,6 @@ LOG_CONTEXT("lcd");
 
 //////////////////////////////////////////////////////////////////////
 
-#define USE_EVENT_GROUP_FOR_DMA_SYNC
-
 #define LCD_NUM_SPI_TRANSFERS (LCD_NUM_SECTIONS + 5)
 
 static_assert(LCD_HEIGHT % LCD_SECTION_HEIGHT == 0);
@@ -154,8 +152,6 @@ namespace
 
     //////////////////////////////////////////////////////////////////////
 
-#if defined(USE_EVENT_GROUP_FOR_DMA_SYNC)
-
     EventGroupHandle_t dma_sent;
 
     void init_dma_flag()
@@ -179,34 +175,6 @@ namespace
         xEventGroupSetBitsFromISR(dma_sent, 1, &woken);
         portYIELD_FROM_ISR(woken);
     }
-
-#else
-    volatile bool dma_sent_flag = false;
-
-    void init_dma_flag()
-    {
-        dma_sent_flag = true;
-    }
-
-    void set_dma_flag()
-    {
-        dma_sent_flag = true;
-    }
-
-    void wait_for_dma_flag()
-    {
-        while(!dma_sent_flag) {
-            // esp_cpu_wait_for_intr();
-        }
-        dma_sent_flag = false;
-    }
-
-    void spi_callback_dma_complete()
-    {
-        set_dma_flag();
-    }
-
-#endif
 
     //////////////////////////////////////////////////////////////////////
 

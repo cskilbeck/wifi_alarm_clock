@@ -3,9 +3,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "driver/gpio.h"
 #include "esp_rom_gpio.h"
-#include "audio_mem.h"
 
 #include "util.h"
 #include "encoder.h"
@@ -16,15 +16,24 @@ LOG_CONTEXT("encoder");
 
 //////////////////////////////////////////////////////////////////////
 
+struct encoder
+{
+    gpio_num_t gpio_a;
+    gpio_num_t gpio_b;
+    uint8_t state;
+    uint8_t store;
+};
+
 namespace
 {
+
     uint8_t const encoder_valid_bits[16] = { 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0 };
 
 }    // namespace
 
 //////////////////////////////////////////////////////////////////////
 
-int IRAM_ATTR encoder_read(esp_encoder_handle_t encoder, int bits)
+int IRAM_ATTR encoder_read(encoder_handle_t encoder, int bits)
 {
     encoder->state <<= 2;
     encoder->state |= bits;
@@ -44,11 +53,19 @@ int IRAM_ATTR encoder_read(esp_encoder_handle_t encoder, int bits)
 
 //////////////////////////////////////////////////////////////////////
 
-esp_err_t encoder_init(encoder_config_t *cfg, esp_encoder_handle_t *handle)
+void encoder_isr_handler(void *e)
+{
+    encoder_handle_t encoder = reinterpret_cast<encoder_handle_t>(e);
+    (void)encoder;
+}
+
+//////////////////////////////////////////////////////////////////////
+
+esp_err_t encoder_init(encoder_config_t *cfg, encoder_handle_t *handle)
 {
     LOG_I("init");
 
-    esp_encoder_handle_t encoder = (esp_encoder_handle_t)audio_calloc(1, sizeof(struct esp_encoder));
+    encoder_handle_t encoder = (encoder_handle_t)heap_caps_calloc(1, sizeof(struct encoder), MALLOC_CAP_INTERNAL);
 
     encoder->gpio_a = cfg->gpio_a;
     encoder->gpio_b = cfg->gpio_b;
@@ -62,15 +79,14 @@ esp_err_t encoder_init(encoder_config_t *cfg, esp_encoder_handle_t *handle)
     };
     gpio_config(&gpiocfg);
 
-    if(cfg->encoder_intr_handler) {
-        LOG_I("Adding GPIO interrupt handlers");
-        gpio_set_intr_type(cfg->gpio_a, GPIO_INTR_ANYEDGE);
-        gpio_set_intr_type(cfg->gpio_b, GPIO_INTR_ANYEDGE);
-        gpio_isr_handler_add(cfg->gpio_a, cfg->encoder_intr_handler, cfg->intr_context);
-        gpio_isr_handler_add(cfg->gpio_b, cfg->encoder_intr_handler, cfg->intr_context);
-        gpio_intr_enable(cfg->gpio_a);
-        gpio_intr_enable(cfg->gpio_b);
-    }
+    LOG_I("Adding GPIO interrupt handlers");
+    gpio_set_intr_type(cfg->gpio_a, GPIO_INTR_ANYEDGE);
+    gpio_set_intr_type(cfg->gpio_b, GPIO_INTR_ANYEDGE);
+    gpio_isr_handler_add(cfg->gpio_a, encoder_isr_handler, encoder);
+    gpio_isr_handler_add(cfg->gpio_b, encoder_isr_handler, encoder);
+    gpio_intr_enable(cfg->gpio_a);
+    gpio_intr_enable(cfg->gpio_b);
+
     LOG_I("init done");
 
     *handle = encoder;
@@ -80,9 +96,8 @@ esp_err_t encoder_init(encoder_config_t *cfg, esp_encoder_handle_t *handle)
 
 //////////////////////////////////////////////////////////////////////
 
-esp_err_t encoder_destroy(esp_encoder_handle_t encoder)
+esp_err_t encoder_destroy(encoder_handle_t encoder)
 {
     LOG_I("destroy");
-    audio_free(encoder);
     return ESP_OK;
 }

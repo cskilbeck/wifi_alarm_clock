@@ -649,7 +649,7 @@ namespace
 
         AUDIO_LOG("set default volume");
 
-        ESP_RETURN_IF_FAILED(sci_write_and_verify(SCI_VOL, 0x5050, 0xffff));
+        ESP_RETURN_IF_FAILED(sci_write_and_verify(SCI_VOL, 0x2020, 0xffff));
 
         // set 44.1 KHz sample rate
 
@@ -814,7 +814,7 @@ namespace
                 }
             }
             if(!busy) {
-                // portYIELD();
+                portYIELD();
             }
         }
     }
