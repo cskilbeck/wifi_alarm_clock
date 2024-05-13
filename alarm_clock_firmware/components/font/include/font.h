@@ -49,9 +49,9 @@ typedef struct font_t *font_handle_t;
 
 esp_err_t font_init(font_data const *fnt, char const *name, uint8_t const *png_start, uint8_t const *png_end, font_handle_t *handle);
 
-void font_drawtext(font_handle_t fnt, vec2i const *pos, uint8_t const *text, uint8_t alpha, int blend_mode);
+esp_err_t font_drawtext(font_handle_t fnt, vec2i const *pos, uint8_t const *text, uint8_t alpha, int blend_mode);
 
-void font_measure_string(font_handle_t fnt, uint8_t const *text, vec2i *size);
+esp_err_t font_measure_string(font_handle_t fnt, uint8_t const *text, vec2i *size);
 
 //////////////////////////////////////////////////////////////////////
 

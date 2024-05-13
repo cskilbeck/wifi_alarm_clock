@@ -18,7 +18,7 @@ namespace
 {
     int constexpr MAX_IMAGES = 128;
 
-    image_t images[MAX_IMAGES];
+    EXT_RAM_BSS_ATTR image_t images[MAX_IMAGES];
     int num_images = 0;
 
     //////////////////////////////////////////////////////////////////////

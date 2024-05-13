@@ -14,14 +14,21 @@ LOG_CONTEXT("font");
 
 //////////////////////////////////////////////////////////////////////
 
-void font_drawtext(font_handle_t fnt, vec2i const *pos, uint8_t const *text, uint8_t alpha, int blend_mode)
+esp_err_t font_drawtext(font_handle_t fnt, vec2i const *pos, uint8_t const *text, uint8_t alpha, int blend_mode)
 {
-    assert(fnt != nullptr);
-    assert(fnt->image_index != 0);
-    assert(pos != nullptr);
-    assert(text != nullptr);
+    if(fnt == nullptr || pos == nullptr || text == nullptr) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if(fnt->image_index == 0) {
+        return ESP_ERR_INVALID_STATE;
+    }
 
     font_data const *f = fnt->font_struct;
+
+    if(f == nullptr || f->graphics == nullptr || f->num_graphics == 0) {
+        return ESP_ERR_INVALID_STATE;
+    }
 
     vec2i curpos = *pos;
 
@@ -46,15 +53,16 @@ void font_drawtext(font_handle_t fnt, vec2i const *pos, uint8_t const *text, uin
         }
         curpos.x += char_width;
     }
+    return ESP_OK;
 }
 
 //////////////////////////////////////////////////////////////////////
 
-void font_measure_string(font_handle_t fnt, uint8_t const *text, vec2i *size)
+esp_err_t font_measure_string(font_handle_t fnt, uint8_t const *text, vec2i *size)
 {
-    assert(size != nullptr);
-    assert(text != nullptr);
-    assert(fnt != nullptr);
+    if(size == nullptr || text == nullptr || fnt == nullptr) {
+        return ESP_ERR_INVALID_ARG;
+    }
 
     font_data const *f = fnt->font_struct;
 
@@ -64,6 +72,8 @@ void font_measure_string(font_handle_t fnt, uint8_t const *text, vec2i *size)
     }
     size->x = width;
     size->y = f->height;
+
+    return ESP_OK;
 }
 
 //////////////////////////////////////////////////////////////////////

@@ -45,28 +45,31 @@ namespace
     {
         ui_event_group_handle = xEventGroupCreate();
 
-        esp_timer_create_args_t ui_timer_args = {};
-        ui_timer_args.callback = ui_on_timer;
-        ui_timer_args.dispatch_method = ESP_TIMER_TASK;
-        ui_timer_args.skip_unhandled_events = true;
-        esp_timer_handle_t ui_timer_handle;
-        ESP_ERROR_CHECK(esp_timer_create(&ui_timer_args, &ui_timer_handle));
+        {
+            esp_timer_create_args_t ui_timer_args = {};
+            ui_timer_args.callback = ui_on_timer;
+            ui_timer_args.dispatch_method = ESP_TIMER_TASK;
+            ui_timer_args.skip_unhandled_events = true;
+            esp_timer_handle_t ui_timer_handle;
+            ESP_ERROR_CHECK(esp_timer_create(&ui_timer_args, &ui_timer_handle));
+            esp_timer_start_periodic(ui_timer_handle, 1000000 / 30);
+        }
 
-        esp_timer_start_periodic(ui_timer_handle, 1000000 / 30);
+        {
+            encoder_config_t encoder_config = {};
+
+            encoder_config.gpio_a = GPIO_NUM_1;
+            encoder_config.gpio_b = GPIO_NUM_2;
+            encoder_config.gpio_button = GPIO_NUM_42;
+
+            ESP_ERROR_CHECK(encoder_init(&encoder_config, &encoder_handle));
+        }
 
         bool draw_cls = true;
         bool draw_face = true;
         bool draw_time = true;
         bool draw_text = true;
         bool draw_seconds = true;
-
-        encoder_config_t encoder_config = {};
-
-        encoder_config.gpio_a = GPIO_NUM_1;
-        encoder_config.gpio_b = GPIO_NUM_2;
-        encoder_config.gpio_button = GPIO_NUM_42;
-
-        ESP_ERROR_CHECK(encoder_init(&encoder_config, &encoder_handle));
 
         int seconds = 0;
 
@@ -80,9 +83,11 @@ namespace
 
                 switch(msg) {
 
-                case ENCODER_MSG_PRESS:
+                case ENCODER_MSG_PRESS: {
+                    size_t free_space = heap_caps_get_free_size(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
+                    LOG_I("Free space: %u (%uKB)", free_space, free_space / 1024);
                     seconds = 60;
-                    break;
+                } break;
 
                 case ENCODER_MSG_RELEASE:
                     seconds = 0;

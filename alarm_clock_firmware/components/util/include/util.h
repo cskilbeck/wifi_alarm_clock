@@ -58,6 +58,11 @@ template <typename T, std::size_t N> constexpr std::size_t countof(T const (&)[N
     return N;
 }
 
+inline uint64_t gpio_bit(int pin_num)
+{
+    return 1llu << pin_num;
+}
+
 #else
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))

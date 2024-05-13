@@ -82,15 +82,15 @@ namespace
     //////////////////////////////////////////////////////////////////////
 
 #if LCD_BITS_PER_PIXEL == 16
-    uint8_t DMA_ATTR display_buffer[LCD_WIDTH * 3 * LCD_SECTION_HEIGHT];
+    uint8_t DRAM_ATTR display_buffer[LCD_WIDTH * 3 * LCD_SECTION_HEIGHT];
 #endif
 
-    uint8_t DMA_ATTR display_list_buffer[32768];
+    uint8_t DRAM_ATTR display_list_buffer[3072];
 
     size_t display_list_used = 0;
 
     // dummy root node for each section
-    display_list_t display_lists[LCD_NUM_SECTIONS];
+    display_list_t DRAM_ATTR display_lists[LCD_NUM_SECTIONS];
 
     //////////////////////////////////////////////////////////////////////
 
@@ -105,7 +105,9 @@ namespace
 
     inline display_list_entry *alloc_display_list_entry(display_list_t *display_list)
     {
-        assert(display_list_used <= (sizeof(display_list_buffer) - sizeof(display_list_entry)));
+        if(display_list_used > (sizeof(display_list_buffer) - sizeof(display_list_entry))) {
+            return nullptr;
+        }
 
         display_list->head->next = display_list_used;
 
@@ -355,7 +357,9 @@ void display_imagerect(vec2i const *dst_pos, vec2i const *src_pos, vec2i const *
         }
 
         display_list_entry *e = alloc_display_list_entry(display_list);
-
+        if(e == nullptr) {
+            break;
+        }
         e->pos = vec2b{ (uint8_t)dst.x, (uint8_t)dst_y };
         e->size = vec2b{ (uint8_t)sz.x, (uint8_t)cur_height };
         e->blit.image_id = image_id;
@@ -425,6 +429,9 @@ void display_fillrect(vec2i const *dst_pos, vec2i const *size, uint32_t color, u
         cur_height += min(0, overflow);
 
         display_list_entry *e = alloc_display_list_entry(display_list);
+        if(e == nullptr) {
+            break;
+        }
         e->pos = vec2b{ (uint8_t)dst_pos->x, (uint8_t)dst_y };
         e->size = vec2b{ (uint8_t)size->x, (uint8_t)cur_height };
         e->color = color;

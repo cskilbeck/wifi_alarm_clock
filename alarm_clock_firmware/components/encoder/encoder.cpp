@@ -35,7 +35,7 @@ struct encoder
 
 namespace
 {
-    uint8_t const encoder_valid_bits[16] = { 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0 };
+    uint16_t const encoder_valid_bits = 0b0110100110010110;
 
     //////////////////////////////////////////////////////////////////////
 
@@ -49,16 +49,13 @@ namespace
         cur_state |= b;
         cur_state &= 3;
         encoder->button_history = cur_state;
-        encoder_message_t msg = {};
-        BaseType_t woken;
         if(cur_state == 2) {
-            msg = ENCODER_MSG_RELEASE;
-            xQueueSendFromISR(encoder->input_queue, &msg, &woken);
+            uint8_t msg = ENCODER_MSG_RELEASE;
+            xQueueSend(encoder->input_queue, &msg, 0);
         } else if(cur_state == 1) {
-            msg = ENCODER_MSG_PRESS;
-            xQueueSendFromISR(encoder->input_queue, &msg, &woken);
+            uint8_t msg = ENCODER_MSG_PRESS;
+            xQueueSend(encoder->input_queue, &msg, 0);
         }
-        portYIELD_FROM_ISR(woken);
     }
 
     //////////////////////////////////////////////////////////////////////
@@ -75,9 +72,9 @@ namespace
 
         BaseType_t woken = pdFALSE;
 
-        encoder_message_t msg = ENCODER_MSG_NULL;
+        uint8_t msg = ENCODER_MSG_NULL;
 
-        if(encoder_valid_bits[encoder->encoder_state] != 0) {
+        if((encoder_valid_bits & (1 << encoder->encoder_state)) != 0) {
             encoder->encoder_store = (encoder->encoder_store << 4) | encoder->encoder_state;
             switch((encoder->encoder_store)) {
             case 0xe8:
@@ -104,33 +101,36 @@ esp_err_t encoder_init(encoder_config_t *cfg, encoder_handle_t *handle)
 
     encoder_handle_t encoder = (encoder_handle_t)heap_caps_calloc(1, sizeof(struct encoder), MALLOC_CAP_INTERNAL);
 
+    if(encoder == nullptr) {
+        return ESP_ERR_NO_MEM;
+    }
+
     encoder->config = *cfg;
 
-    encoder->input_queue = xQueueCreate(16, sizeof(encoder_message_t));
+    encoder->input_queue = xQueueCreate(32, sizeof(uint8_t));
 
-    gpio_config_t gpiocfg = {
-        .pin_bit_mask = (1llu << cfg->gpio_a) | (1llu << cfg->gpio_b),
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_ANYEDGE,
-    };
+    gpio_config_t gpiocfg = {};
+    gpiocfg.pin_bit_mask = gpio_bit(cfg->gpio_a) | gpio_bit(cfg->gpio_b);
+    gpiocfg.mode = GPIO_MODE_INPUT;
+    gpiocfg.pull_up_en = GPIO_PULLUP_ENABLE;
+    gpiocfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    gpiocfg.intr_type = GPIO_INTR_ANYEDGE;
     gpio_config(&gpiocfg);
 
     gpiocfg.intr_type = GPIO_INTR_DISABLE;
-    gpiocfg.pin_bit_mask = 1llu << cfg->gpio_button;
+    gpiocfg.pin_bit_mask = gpio_bit(cfg->gpio_button);
     gpio_config(&gpiocfg);
 
     LOG_I("Adding GPIO interrupt handlers");
 
-    gpio_install_isr_service(ESP_INTR_CPU_AFFINITY_AUTO);
+    ESP_ERROR_CHECK(gpio_install_isr_service(ESP_INTR_CPU_AFFINITY_AUTO));
 
-    gpio_set_intr_type(cfg->gpio_a, GPIO_INTR_ANYEDGE);
-    gpio_set_intr_type(cfg->gpio_b, GPIO_INTR_ANYEDGE);
-    gpio_isr_handler_add(cfg->gpio_a, encoder_isr_handler, encoder);
-    gpio_isr_handler_add(cfg->gpio_b, encoder_isr_handler, encoder);
-    gpio_intr_enable(cfg->gpio_a);
-    gpio_intr_enable(cfg->gpio_b);
+    ESP_ERROR_CHECK(gpio_set_intr_type(cfg->gpio_a, GPIO_INTR_ANYEDGE));
+    ESP_ERROR_CHECK(gpio_set_intr_type(cfg->gpio_b, GPIO_INTR_ANYEDGE));
+    ESP_ERROR_CHECK(gpio_isr_handler_add(cfg->gpio_a, encoder_isr_handler, encoder));
+    ESP_ERROR_CHECK(gpio_isr_handler_add(cfg->gpio_b, encoder_isr_handler, encoder));
+    ESP_ERROR_CHECK(gpio_intr_enable(cfg->gpio_a));
+    ESP_ERROR_CHECK(gpio_intr_enable(cfg->gpio_b));
 
     LOG_I("starting button timer");
 
@@ -140,7 +140,7 @@ esp_err_t encoder_init(encoder_config_t *cfg, encoder_handle_t *handle)
     button_timer_args.skip_unhandled_events = false;
     button_timer_args.arg = encoder;
     ESP_ERROR_CHECK(esp_timer_create(&button_timer_args, &encoder->timer_handle));
-    esp_timer_start_periodic(encoder->timer_handle, 1000000 / 100);
+    ESP_ERROR_CHECK(esp_timer_start_periodic(encoder->timer_handle, 1000000 / 100));
 
     LOG_I("init done");
 
@@ -154,6 +154,7 @@ esp_err_t encoder_init(encoder_config_t *cfg, encoder_handle_t *handle)
 esp_err_t encoder_destroy(encoder_handle_t encoder)
 {
     LOG_I("destroy");
+    assert(false && "encoder_destroy not implemented");
     return ESP_OK;
 }
 
@@ -161,7 +162,9 @@ esp_err_t encoder_destroy(encoder_handle_t encoder)
 
 esp_err_t encoder_get_message(encoder_handle_t encoder, encoder_message_t *msg)
 {
-    if(xQueueReceive(encoder->input_queue, msg, 0)) {
+    uint8_t m;
+    if(xQueueReceive(encoder->input_queue, &m, 0)) {
+        *msg = static_cast<encoder_message_t>(m);
         return ESP_OK;
     }
     return ESP_ERR_NOT_FOUND;

@@ -59,9 +59,7 @@ void play_song(void *)
             vTaskDelay(pdMS_TO_TICKS(100));
         }
     }
-    size_t free_space = heap_caps_get_free_size(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
-    LOG_I("Free space: %u (%uKB)", free_space, free_space / 1024);
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(2000));
     audio_stop();
     vTaskDelay(portMAX_DELAY);
 }
@@ -88,7 +86,7 @@ extern "C" void app_main(void)
     display_init();
     assets_init();
 
-    xTaskCreatePinnedToCore(play_song, "play_song", 4096, nullptr, 5, nullptr, 0);
+    xTaskCreatePinnedToCore(play_song, "play_song", 2048, nullptr, 5, nullptr, 0);
 
     ui_init();
     wifi_init();

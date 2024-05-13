@@ -14,7 +14,7 @@
 
 LOG_CONTEXT("led");
 
-#define LED_PIN ((gpio_num_t)7)
+#define LED_PIN GPIO_NUM_7
 
 //////////////////////////////////////////////////////////////////////
 

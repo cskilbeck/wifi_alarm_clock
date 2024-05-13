@@ -663,7 +663,7 @@ namespace
 
         AUDIO_LOG("set default volume");
 
-        ESP_RETURN_IF_FAILED(sci_write_and_verify(SCI_VOL, 0x2020, 0xffff));
+        ESP_RETURN_IF_FAILED(sci_write_and_verify(SCI_VOL, 0x4040, 0xffff));
 
         // set 44.1 KHz sample rate
 
@@ -860,7 +860,7 @@ esp_err_t audio_init()
 
     // create the ring buffer which is used to send compressed audio data to the audio task
 
-    ESP_RETURN_IF_NULL(ring_buffer = xRingbufferCreate(65536, RINGBUF_TYPE_NOSPLIT));
+    ESP_RETURN_IF_NULL(ring_buffer = xRingbufferCreate(32768, RINGBUF_TYPE_NOSPLIT));
 
     AUDIO_LOG("Create audio task");
 
