@@ -356,7 +356,7 @@ namespace
 
     //////////////////////////////////////////////////////////////////////
 
-    void lcd_spi_pre_transfer_callback(spi_transaction_t *t)
+    void spi_pre_transfer_callback(spi_transaction_t *t)
     {
         spi_callback_user_data_t *p = (spi_callback_user_data_t *)t->user;
         if(p != nullptr && p->pre_callback != nullptr) {
@@ -366,7 +366,7 @@ namespace
 
     //////////////////////////////////////////////////////////////////////
 
-    IRAM_ATTR void lcd_spi_post_transfer_complete(spi_transaction_t *t)
+    IRAM_ATTR void spi_post_transfer_complete(spi_transaction_t *t)
     {
         spi_callback_user_data_t *p = (spi_callback_user_data_t *)t->user;
         if(p != nullptr && p->post_callback != nullptr) {
@@ -585,8 +585,8 @@ namespace
         devcfg.mode = 0;
         devcfg.spics_io_num = -1;
         devcfg.queue_size = 1;
-        devcfg.post_cb = lcd_spi_post_transfer_complete;
-        devcfg.pre_cb = lcd_spi_pre_transfer_callback;
+        devcfg.post_cb = spi_post_transfer_complete;
+        devcfg.pre_cb = spi_pre_transfer_callback;
 
         ESP_RETURN_IF_FAILED(spi_bus_add_device(config.spi_host, &devcfg, &slow_spi_device));
 
@@ -681,8 +681,8 @@ namespace
         stream_spi_devcfg.clock_speed_hz = 12000000;
         stream_spi_devcfg.spics_io_num = -1;
         stream_spi_devcfg.queue_size = 1;
-        stream_spi_devcfg.post_cb = lcd_spi_post_transfer_complete;
-        stream_spi_devcfg.pre_cb = lcd_spi_pre_transfer_callback;
+        stream_spi_devcfg.post_cb = spi_post_transfer_complete;
+        stream_spi_devcfg.pre_cb = spi_pre_transfer_callback;
 
         ESP_RETURN_IF_FAILED(spi_bus_add_device(config.spi_host, &stream_spi_devcfg, &fast_spi_device));
 
@@ -866,7 +866,7 @@ esp_err_t audio_init()
 
     // kick off the audio task
 
-    BaseType_t r = xTaskCreatePinnedToCore(audio_player, "vs1053", 4096, nullptr, 10, &audio_player_task_handle, 1);
+    BaseType_t r = xTaskCreatePinnedToCore(audio_player, "audio", 4096, nullptr, 5, &audio_player_task_handle, 1);
     if(r != pdPASS) {
         LOG_E("xTaskCreate failed: returned %d", r);
         return ESP_ERR_NO_MEM;
