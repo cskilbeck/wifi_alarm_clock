@@ -23,6 +23,9 @@
 
 LOG_CONTEXT("lcd");
 
+#define SPI_BIT_DMA_COMPLETE 1
+#define SPI_BIT_SETUP_COMPLETE 2
+
 //////////////////////////////////////////////////////////////////////
 // LCD SPI
 
@@ -78,11 +81,14 @@ namespace
 
     IRAM_ATTR void spi_callback_set_data();
     IRAM_ATTR void spi_callback_clear_data();
+    IRAM_ATTR void spi_callback_setup_complete();
     IRAM_ATTR void spi_callback_dma_complete();
 
     DMA_ATTR uint8_t lcd_buffer[2][LCD_BYTES_PER_LINE * LCD_SECTION_HEIGHT];
 
     spi_callback_user_data_t spi_callback_cmd = { .pre_callback = spi_callback_clear_data, .post_callback = nullptr };
+
+    spi_callback_user_data_t spi_callback_cmd_last = { .pre_callback = spi_callback_clear_data, .post_callback = spi_callback_setup_complete };
 
     spi_callback_user_data_t spi_callback_data = { .pre_callback = spi_callback_set_data, .post_callback = nullptr };
 
@@ -152,27 +158,25 @@ namespace
 
     //////////////////////////////////////////////////////////////////////
 
-    EventGroupHandle_t dma_sent;
+    EventGroupHandle_t spi_bits;
 
     void init_dma_flag()
     {
-        dma_sent = xEventGroupCreate();
+        spi_bits = xEventGroupCreate();
     }
 
-    void set_dma_flag()
+    void spi_callback_setup_complete()
     {
-        xEventGroupSetBits(dma_sent, 1);
-    }
-
-    void wait_for_dma_flag()
-    {
-        xEventGroupWaitBits(dma_sent, 1, 1, 1, portMAX_DELAY);
+        BaseType_t woken = pdFALSE;
+        xEventGroupSetBitsFromISR(spi_bits, SPI_BIT_SETUP_COMPLETE, &woken);
+        portYIELD_FROM_ISR(woken);
     }
 
     void spi_callback_dma_complete()
     {
+        gpio_set_level(LCD_PIN_NUM_DC, 0);
         BaseType_t woken = pdFALSE;
-        xEventGroupSetBitsFromISR(dma_sent, 1, &woken);
+        xEventGroupSetBitsFromISR(spi_bits, SPI_BIT_DMA_COMPLETE, &woken);
         portYIELD_FROM_ISR(woken);
     }
 
@@ -287,12 +291,14 @@ esp_err_t lcd_init()
     buscfg.sclk_io_num = LCD_PIN_NUM_CLK;
     buscfg.quadwp_io_num = -1;
     buscfg.quadhd_io_num = -1;
+    buscfg.flags = SPICOMMON_BUSFLAG_MASTER;
     buscfg.max_transfer_sz = LCD_BYTES_PER_LINE * LCD_SECTION_HEIGHT;
 
     spi_device_interface_config_t devcfg = {};
     devcfg.flags = SPI_DEVICE_NO_RETURN_RESULT;
     devcfg.clock_speed_hz = LCD_SPI_SPEED;
     devcfg.mode = 0;
+    devcfg.queue_size = 6;
     devcfg.spics_io_num = LCD_PIN_NUM_CS;
     devcfg.queue_size = LCD_NUM_SPI_TRANSFERS;
     devcfg.pre_cb = lcd_spi_pre_transfer_callback;
@@ -367,7 +373,7 @@ esp_err_t lcd_init()
 
     spi_transactions[4].tx_data[0] = 0x2C;
     spi_transactions[4].length = 8;
-    spi_transactions[4].user = &spi_callback_cmd;
+    spi_transactions[4].user = &spi_callback_cmd_last;
     spi_transactions[4].flags = SPI_TRANS_USE_TXDATA;
 
     for(int i = 5; i < LCD_NUM_SPI_TRANSFERS; i++) {
@@ -392,18 +398,27 @@ esp_err_t lcd_update(lcd_buffer_filler filler_callback)
         return ESP_ERR_INVALID_ARG;
     }
 
+    // send the setup transfers
+
+    xEventGroupClearBits(spi_bits, SPI_BIT_SETUP_COMPLETE);
+
     for(int i = 0; i < 5; ++i) {
         spi_device_queue_trans(spi, spi_transactions + i, portMAX_DELAY);
     }
 
-    set_dma_flag();
+    // wait for setup to complete and set the dma complete flag
+
+    xEventGroupSync(spi_bits, SPI_BIT_DMA_COMPLETE, SPI_BIT_SETUP_COMPLETE, portMAX_DELAY);
 
     for(int i = 0; i < LCD_NUM_SECTIONS; ++i) {
 
+        // draw the pixels into the buffer
         filler_callback(i, lcd_buffer[i & 1]);
 
-        wait_for_dma_flag();
+        // wait for previous dma to complete
+        xEventGroupWaitBits(spi_bits, SPI_BIT_DMA_COMPLETE, pdTRUE, pdTRUE, portMAX_DELAY);
 
+        // start this buffer dma transfer
         ESP_ERROR_CHECK(spi_device_queue_trans(spi, spi_transactions + i + 5, portMAX_DELAY));
     }
     return ESP_OK;

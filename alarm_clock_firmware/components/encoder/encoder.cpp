@@ -49,13 +49,19 @@ namespace
         cur_state |= b;
         cur_state &= 3;
         encoder->button_history = cur_state;
-        if(cur_state == 2) {
-            uint8_t msg = ENCODER_MSG_RELEASE;
-            xQueueSend(encoder->input_queue, &msg, 0);
-        } else if(cur_state == 1) {
-            uint8_t msg = ENCODER_MSG_PRESS;
-            xQueueSend(encoder->input_queue, &msg, 0);
+        BaseType_t woken = pdFALSE;
+        uint8_t msg = ENCODER_MSG_NULL;
+        switch(cur_state) {
+        case 1:
+            msg = ENCODER_MSG_PRESS;
+            xQueueSendFromISR(encoder->input_queue, &msg, &woken);
+            break;
+        case 2:
+            msg = ENCODER_MSG_RELEASE;
+            xQueueSendFromISR(encoder->input_queue, &msg, &woken);
+            break;
         }
+        portYIELD_FROM_ISR(woken);
     }
 
     //////////////////////////////////////////////////////////////////////
@@ -79,14 +85,13 @@ namespace
             switch((encoder->encoder_store)) {
             case 0xe8:
                 msg = ENCODER_MSG_ROTATE_CW;
+                xQueueSendFromISR(encoder->input_queue, &msg, &woken);
                 break;
             case 0x2b:
                 msg = ENCODER_MSG_ROTATE_CCW;
+                xQueueSendFromISR(encoder->input_queue, &msg, &woken);
                 break;
             }
-        }
-        if(msg != ENCODER_MSG_NULL) {
-            xQueueSendFromISR(encoder->input_queue, &msg, &woken);
         }
         portYIELD_FROM_ISR(woken);
     }
@@ -136,7 +141,7 @@ esp_err_t encoder_init(encoder_config_t *cfg, encoder_handle_t *handle)
 
     esp_timer_create_args_t button_timer_args = {};
     button_timer_args.callback = button_on_timer;
-    button_timer_args.dispatch_method = ESP_TIMER_TASK;
+    button_timer_args.dispatch_method = ESP_TIMER_ISR;
     button_timer_args.skip_unhandled_events = false;
     button_timer_args.arg = encoder;
     ESP_ERROR_CHECK(esp_timer_create(&button_timer_args, &encoder->timer_handle));

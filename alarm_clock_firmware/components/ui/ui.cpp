@@ -13,6 +13,7 @@
 #include "display.h"
 #include "font.h"
 #include "image.h"
+#include "led.h"
 #include "lcd_gc9a01.h"
 #include "ui.h"
 #include "assets.h"
@@ -27,43 +28,50 @@ namespace
 
     int frame = 0;
 
-    EventGroupHandle_t ui_event_group_handle;
+    EventGroupHandle_t ui_timer_event_group_handle;
     TaskHandle_t ui_task_handle;
-
-    encoder_handle_t encoder_handle;
 
     //////////////////////////////////////////////////////////////////////
 
-    void ui_on_timer(void *)
+    void IRAM_ATTR ui_on_timer(void *)
     {
-        xEventGroupSetBits(ui_event_group_handle, 1);
+        BaseType_t woken = pdFALSE;
+        xEventGroupSetBitsFromISR(ui_timer_event_group_handle, 1, &woken);
+        portYIELD_FROM_ISR(woken);
     }
 
     //////////////////////////////////////////////////////////////////////
 
     void ui_task(void *)
     {
-        ui_event_group_handle = xEventGroupCreate();
+        // event group for the screen redraw timer
 
+        ui_timer_event_group_handle = xEventGroupCreate();
+
+        // setup the screen redraw timer
+
+        esp_timer_handle_t ui_timer_handle;
         {
             esp_timer_create_args_t ui_timer_args = {};
             ui_timer_args.callback = ui_on_timer;
-            ui_timer_args.dispatch_method = ESP_TIMER_TASK;
-            ui_timer_args.skip_unhandled_events = true;
-            esp_timer_handle_t ui_timer_handle;
+            ui_timer_args.dispatch_method = ESP_TIMER_ISR;
+            ui_timer_args.skip_unhandled_events = false;
             ESP_ERROR_CHECK(esp_timer_create(&ui_timer_args, &ui_timer_handle));
             esp_timer_start_periodic(ui_timer_handle, 1000000 / 30);
         }
 
+        // encoder setup
+
+        encoder_handle_t encoder_handle;
         {
             encoder_config_t encoder_config = {};
-
             encoder_config.gpio_a = GPIO_NUM_1;
             encoder_config.gpio_b = GPIO_NUM_2;
             encoder_config.gpio_button = GPIO_NUM_42;
-
             ESP_ERROR_CHECK(encoder_init(&encoder_config, &encoder_handle));
         }
+
+        // draw all the things
 
         bool draw_cls = true;
         bool draw_face = true;
@@ -75,7 +83,7 @@ namespace
 
         while(true) {
 
-            xEventGroupWaitBits(ui_event_group_handle, 1, 1, 0, portMAX_DELAY);
+            xEventGroupWaitBits(ui_timer_event_group_handle, 1, pdTRUE, pdFALSE, portMAX_DELAY);
 
             encoder_message_t msg;
 
@@ -210,7 +218,7 @@ namespace
 
 esp_err_t ui_init()
 {
-    if(xTaskCreatePinnedToCore(ui_task, "ui", 4096, NULL, 2, &ui_task_handle, 0) != pdTRUE) {
+    if(xTaskCreatePinnedToCore(ui_task, "ui", 4096, NULL, 24, &ui_task_handle, 1) != pdTRUE) {
         return ESP_ERR_NO_MEM;
     }
 
