@@ -5,3 +5,4 @@ managed_components/
 *.lock
 *.code-workspace
 ~$*
+sdkconfig.old
