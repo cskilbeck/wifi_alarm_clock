@@ -35,9 +35,7 @@ namespace
 
     void IRAM_ATTR ui_on_timer(void *)
     {
-        BaseType_t woken = pdFALSE;
-        xEventGroupSetBitsFromISR(ui_timer_event_group_handle, 1, &woken);
-        portYIELD_FROM_ISR(woken);
+        xEventGroupSetBits(ui_timer_event_group_handle, 1);
     }
 
     //////////////////////////////////////////////////////////////////////
@@ -54,7 +52,7 @@ namespace
         {
             esp_timer_create_args_t ui_timer_args = {};
             ui_timer_args.callback = ui_on_timer;
-            ui_timer_args.dispatch_method = ESP_TIMER_ISR;
+            ui_timer_args.dispatch_method = ESP_TIMER_TASK;
             ui_timer_args.skip_unhandled_events = false;
             ESP_ERROR_CHECK(esp_timer_create(&ui_timer_args, &ui_timer_handle));
             esp_timer_start_periodic(ui_timer_handle, 1000000 / 30);

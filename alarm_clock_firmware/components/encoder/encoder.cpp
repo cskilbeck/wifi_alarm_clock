@@ -54,14 +54,13 @@ namespace
         switch(cur_state) {
         case 1:
             msg = ENCODER_MSG_PRESS;
-            xQueueSendFromISR(encoder->input_queue, &msg, &woken);
+            xQueueSend(encoder->input_queue, &msg, 0);
             break;
         case 2:
             msg = ENCODER_MSG_RELEASE;
-            xQueueSendFromISR(encoder->input_queue, &msg, &woken);
+            xQueueSend(encoder->input_queue, &msg, 0);
             break;
         }
-        portYIELD_FROM_ISR(woken);
     }
 
     //////////////////////////////////////////////////////////////////////
@@ -141,7 +140,7 @@ esp_err_t encoder_init(encoder_config_t *cfg, encoder_handle_t *handle)
 
     esp_timer_create_args_t button_timer_args = {};
     button_timer_args.callback = button_on_timer;
-    button_timer_args.dispatch_method = ESP_TIMER_ISR;
+    button_timer_args.dispatch_method = ESP_TIMER_TASK;
     button_timer_args.skip_unhandled_events = false;
     button_timer_args.arg = encoder;
     ESP_ERROR_CHECK(esp_timer_create(&button_timer_args, &encoder->timer_handle));
