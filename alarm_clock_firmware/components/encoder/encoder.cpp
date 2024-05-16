@@ -49,7 +49,6 @@ namespace
         cur_state |= b;
         cur_state &= 3;
         encoder->button_history = cur_state;
-        BaseType_t woken = pdFALSE;
         uint8_t msg = ENCODER_MSG_NULL;
         switch(cur_state) {
         case 1:

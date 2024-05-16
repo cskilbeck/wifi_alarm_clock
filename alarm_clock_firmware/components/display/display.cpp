@@ -168,7 +168,7 @@ namespace
     {
         static void blend(uint8_t *dst, uint32_t src, uint8_t alpha)
         {
-            uint32_t sa = (get_a(src) * alpha) >> 8;
+            uint32_t sa = (get_a(src) * (alpha + 1)) >> 8;
             dst[0] = min(255lu, dst[0] + (get_r(src) * sa >> 8));
             dst[1] = min(255lu, dst[1] + (get_g(src) * sa >> 8));
             dst[2] = min(255lu, dst[2] + (get_b(src) * sa >> 8));
@@ -181,7 +181,7 @@ namespace
     {
         static void blend(uint8_t *dst, uint32_t src, uint8_t alpha)
         {
-            uint32_t sa = (get_a(src) * alpha) >> 8;
+            uint32_t sa = (get_a(src) * (alpha + 1)) >> 8;
             uint32_t da = 255 - sa;
             dst[0] = ((get_r(src) * sa) >> 8) + ((dst[0] * da) >> 8);
             dst[1] = ((get_g(src) * sa) >> 8) + ((dst[1] * da) >> 8);

@@ -10,215 +10,186 @@
 #include "driver/gpio.h"
 
 #include "util.h"
-#include "display.h"
-#include "font.h"
-#include "image.h"
-#include "led.h"
-#include "lcd_gc9a01.h"
+#include "chs_list.h"
 #include "ui.h"
-#include "assets.h"
-#include "encoder.h"
 
 LOG_CONTEXT("ui");
 
 //////////////////////////////////////////////////////////////////////
 
+struct ui_draw_item : chs::list_node<ui_draw_item>
+{
+    uint32_t priority : 3;
+    uint32_t flags : 29;
+
+    ui_draw_function_t draw_function;
+};
+
+//////////////////////////////////////////////////////////////////////
+
 namespace
 {
+    ui_input_handler ui_handler_stack[16];
+    int ui_handler_stack_length = 0;
 
-    int frame = 0;
+    ui_draw_item draw_items_pool[256];
 
-    EventGroupHandle_t ui_timer_event_group_handle;
-    TaskHandle_t ui_task_handle;
+    chs::linked_list<ui_draw_item> free_draw_items;
+
+    chs::linked_list<ui_draw_item> live_draw_items[ui_draw_num_priorities];
 
     //////////////////////////////////////////////////////////////////////
 
-    void IRAM_ATTR ui_on_timer(void *)
+    void init_draw_items_pool()
     {
-        xEventGroupSetBits(ui_timer_event_group_handle, 1);
+        free_draw_items.clear();
+        for(ui_draw_item &p : draw_items_pool) {
+            free_draw_items.push_back(p);
+        }
+        for(auto &l : live_draw_items) {
+            l.clear();
+        }
     }
 
     //////////////////////////////////////////////////////////////////////
 
-    void ui_task(void *)
+    ui_draw_item *allocate_draw_item(ui_draw_priority priority)
     {
-        // event group for the screen redraw timer
-
-        ui_timer_event_group_handle = xEventGroupCreate();
-
-        // setup the screen redraw timer
-
-        esp_timer_handle_t ui_timer_handle;
-        {
-            esp_timer_create_args_t ui_timer_args = {};
-            ui_timer_args.callback = ui_on_timer;
-            ui_timer_args.dispatch_method = ESP_TIMER_TASK;
-            ui_timer_args.skip_unhandled_events = false;
-            ESP_ERROR_CHECK(esp_timer_create(&ui_timer_args, &ui_timer_handle));
-            esp_timer_start_periodic(ui_timer_handle, 1000000 / 30);
+        if(free_draw_items.empty()) {
+            return nullptr;
         }
-
-        // encoder setup
-
-        encoder_handle_t encoder_handle;
-        {
-            encoder_config_t encoder_config = {};
-            encoder_config.gpio_a = GPIO_NUM_1;
-            encoder_config.gpio_b = GPIO_NUM_2;
-            encoder_config.gpio_button = GPIO_NUM_42;
-            ESP_ERROR_CHECK(encoder_init(&encoder_config, &encoder_handle));
-        }
-
-        // draw all the things
-
-        bool draw_cls = true;
-        bool draw_face = true;
-        bool draw_time = true;
-        bool draw_text = true;
-        bool draw_seconds = true;
-
-        int seconds = 0;
-
-        while(true) {
-
-            xEventGroupWaitBits(ui_timer_event_group_handle, 1, pdTRUE, pdFALSE, portMAX_DELAY);
-
-            encoder_message_t msg;
-
-            while(encoder_get_message(encoder_handle, &msg) == ESP_OK) {
-
-                switch(msg) {
-
-                case ENCODER_MSG_PRESS: {
-                    size_t free_space = heap_caps_get_free_size(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
-                    LOG_I("Free space: %u (%uKB)", free_space, free_space / 1024);
-                    seconds = 60;
-                } break;
-
-                case ENCODER_MSG_RELEASE:
-                    seconds = 0;
-                    break;
-
-                case ENCODER_MSG_ROTATE_CW:
-                    seconds = min(60, seconds + 1);
-                    break;
-
-                case ENCODER_MSG_ROTATE_CCW:
-                    seconds = max(0, seconds - 1);
-                    break;
-
-                default:
-                    break;
-                }
-            }
-
-            display_begin_frame();
-
-            //////////////////////////////////////////////////////////////////////
-
-            if(draw_cls) {
-                vec2i dst_pos = { 0, 0 };
-                vec2i size = { LCD_WIDTH, LCD_HEIGHT };
-                display_fillrect(&dst_pos, &size, 0xff3f003f, blend_opaque);
-            }
-
-            //////////////////////////////////////////////////////////////////////
-
-            if(draw_face) {
-                float speed = 0.025f;
-                float t = frame * speed;
-
-                int x = (int)(cosf(t) * 90) + LCD_WIDTH / 2;
-                int y = (int)(sinf(t) * 90) + LCD_HEIGHT / 2;
-
-                vec2i dst_pos = { x, y };
-                vec2f pivot = { 0.5f, 0.5f };
-                display_image(&dst_pos, face_image_id, 255, blend_multiply, &pivot);
-            }
-
-            //////////////////////////////////////////////////////////////////////
-
-            if(draw_time) {
-                font_handle_t f = digits_font;
-
-                char time[7];
-                snprintf(time, 7, "23:%02d", seconds);
-
-                uint8_t const *text = (uint8_t const *)time;
-                vec2i text_size;
-
-                font_measure_string(f, text, &text_size);
-
-                int x = LCD_WIDTH / 2;
-                int y = LCD_HEIGHT / 2;
-
-                vec2i text_pos = { x - text_size.x / 2, y - text_size.y / 2 };
-                font_drawtext(f, &text_pos, text, 255, blend_multiply);
-            }
-
-            //////////////////////////////////////////////////////////////////////
-
-            if(draw_text) {
-                font_handle_t f = forte_font;
-
-                uint8_t const *text = (uint8_t const *)"Hello, World!";
-
-                vec2i text_size;
-
-                font_measure_string(f, text, &text_size);
-
-                float speed = 0.05f;
-                float t = frame * speed;
-
-                int x = (int)(sinf(t) * 100) + 120;
-                int y = (int)(cosf(t) * 100) + 120;
-
-                vec2i text_pos = { x - text_size.x / 2, y - text_size.y / 2 };
-                font_drawtext(f, &text_pos, text, 255, blend_multiply);
-            }
-
-            //////////////////////////////////////////////////////////////////////
-
-            if(draw_seconds) {
-                image_t const *src_img = image_get(blip_image_id);
-                for(int i = 0; i < seconds; ++i) {
-                    float t = (float)i * M_TWOPI / 60.0f;
-                    float x = sinf(t) * 114 + 120;
-                    float y = 120 - cosf(t) * 114;
-                    vec2i src_pos = { 0, 0 };
-                    vec2i size = { src_img->width, src_img->height };
-                    vec2i dst_pos = { (int)x, (int)y };
-                    dst_pos.x -= size.x / 2;
-                    dst_pos.y -= size.y / 2;
-                    display_imagerect(&dst_pos, &src_pos, &size, blip_image_id, 0xff, blend_add);
-                }
-
-                src_img = image_get(small_blip_image_id);
-                for(int i = 0; i < 60; i += 5) {
-                    float t = (float)i * M_TWOPI / 60.0f;
-                    float x = sinf(t) * 104 + 120;
-                    float y = 120 - cosf(t) * 104;
-                    vec2i src_pos = { 0, 0 };
-                    vec2i size = { src_img->width, src_img->height };
-                    vec2i dst_pos = { (int)x, (int)y };
-                    dst_pos.x -= size.x / 2;
-                    dst_pos.y -= size.y / 2;
-                    display_imagerect(&dst_pos, &src_pos, &size, small_blip_image_id, 0xff, blend_add);
-                }
-            }
-
-            display_end_frame();
-
-            frame += 1;
-        }
+        ui_draw_item *new_item = free_draw_items.pop_back();
+        new_item->priority = priority;
+        new_item->flags = 0;
+        live_draw_items[priority].push_back(new_item);
+        return new_item;
     }
+
+    //////////////////////////////////////////////////////////////////////
+
+    void free_draw_item(ui_draw_item *i)
+    {
+        live_draw_items[i->priority].remove(i);
+        free_draw_items.push_back(i);
+    }
+
 }    // namespace
+
+//////////////////////////////////////////////////////////////////////
 
 esp_err_t ui_init()
 {
-    if(xTaskCreatePinnedToCore(ui_task, "ui", 4096, NULL, 24, &ui_task_handle, 1) != pdTRUE) {
-        return ESP_ERR_NO_MEM;
-    }
-
+    init_draw_items_pool();
     return ESP_OK;
+}
+
+//////////////////////////////////////////////////////////////////////
+
+ui_draw_item_handle_t ui_add_item(ui_draw_priority_t priority, ui_draw_function_t draw_function)
+{
+    assert(priority >= ui_draw_priority_0 && priority < ui_draw_num_priorities);
+    assert(draw_function != nullptr);
+
+    ui_draw_item_handle_t new_item = allocate_draw_item(priority);
+    if(new_item != nullptr) {
+        new_item->draw_function = draw_function;
+    }
+    return new_item;
+}
+
+//////////////////////////////////////////////////////////////////////
+
+void ui_remove_item(ui_draw_item_handle_t item)
+{
+    assert(item != nullptr);
+    free_draw_item(item);
+}
+
+//////////////////////////////////////////////////////////////////////
+
+void ui_item_change_priority(ui_draw_item_handle_t item, ui_draw_priority new_priority)
+{
+    if(new_priority == item->priority) {
+        return;
+    }
+    live_draw_items[item->priority].remove(item);
+    item->priority = new_priority;
+    live_draw_items[new_priority].push_back(item);
+}
+
+//////////////////////////////////////////////////////////////////////
+
+ui_draw_item_flags ui_item_get_flags(ui_draw_item_handle_t item)
+{
+    return static_cast<ui_draw_item_flags>(item->flags);
+}
+
+//////////////////////////////////////////////////////////////////////
+
+void ui_item_set_flags(ui_draw_item_handle_t item, ui_draw_item_flags flags)
+{
+    item->flags |= flags;
+}
+
+//////////////////////////////////////////////////////////////////////
+
+void ui_item_clear_flags(ui_draw_item_handle_t item, ui_draw_item_flags flags)
+{
+    item->flags &= ~flags;
+}
+
+//////////////////////////////////////////////////////////////////////
+
+void ui_item_toggle_flags(ui_draw_item_handle_t item, ui_draw_item_flags flags)
+{
+    item->flags ^= flags;
+}
+
+//////////////////////////////////////////////////////////////////////
+
+void ui_draw(int frame)
+{
+    for(auto &l : live_draw_items) {
+        for(auto *d = l.head(); d != l.done(); d = l.next(d)) {
+            if((d->flags & uif_hidden) == 0) {
+                d->draw_function(frame);
+            }
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////
+
+esp_err_t ui_push_input_handler(ui_input_handler h)
+{
+    esp_err_t ret = ESP_OK;
+    if(ui_handler_stack_length == countof(ui_handler_stack)) {
+        ret = ESP_ERR_NO_MEM;
+    } else {
+        ui_handler_stack[ui_handler_stack_length] = h;
+        ui_handler_stack_length += 1;
+    }
+    return ret;
+}
+
+//////////////////////////////////////////////////////////////////////
+
+esp_err_t ui_pop_current_handler()
+{
+    if(ui_handler_stack_length == 0) {
+        return ESP_ERR_NOT_FOUND;
+    }
+    ui_handler_stack_length -= 1;
+    return ESP_OK;
+}
+
+//////////////////////////////////////////////////////////////////////
+
+ui_input_handler ui_get_current_handler()
+{
+    ui_input_handler h = nullptr;
+    if(ui_handler_stack_length > 0) {
+        h = ui_handler_stack[ui_handler_stack_length - 1];
+    }
+    return h;
 }
