@@ -75,9 +75,10 @@ void play_file(void *)
             vTaskDelay(pdMS_TO_TICKS(100));
         }
     }
-    vTaskDelay(pdMS_TO_TICKS(2000));
+    audio_wait_for_sound_complete(portMAX_DELAY);
+    // LOG_I("AUDIO Complete?");
     audio_stop();
-    vTaskDelay(portMAX_DELAY);
+    vTaskDelete(nullptr);
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -358,7 +359,7 @@ extern "C" void app_main(void)
     display_init();
     assets_init();
 
-    xTaskCreatePinnedToCore(play_file, "play_file", 2048, nullptr, 5, nullptr, 0);
+    xTaskCreatePinnedToCore(play_file, "play_file", 3072, nullptr, 5, nullptr, 0);
 
     wifi_init();
 

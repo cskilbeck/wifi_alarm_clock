@@ -120,6 +120,9 @@ LOG_CONTEXT("audio");
 #define SPI_EVENT_BIT_COMPLETE 1
 #define SPI_EVENT_BIT_READ_COMPLETE 2
 
+#define AUDIO_EVENT_BIT_RING_BUFFER_EMPTY (1 << 0)
+#define AUDIO_EVENT_BIT_ENDED (1 << 1)
+
 namespace
 {
     //////////////////////////////////////////////////////////////////////
@@ -160,6 +163,10 @@ namespace
 
     EventGroupHandle_t spi_event_group_handle;
 
+    // event group for signalling audio events
+
+    EventGroupHandle_t audio_event_group_handle;
+
     // queue for sending audio messages to the player
 
     QueueHandle_t audio_command_queue;
@@ -172,13 +179,9 @@ namespace
 
     uint8_t fill_byte;
 
-    // this is set when we're ending playback
-
-    bool ending = false;
-
     // how many end_fill_bytes to send
 
-    size_t ending_sent = 0;
+    size_t end_bytes_sent;
 
     // chunk of compressed data we got from the ring buffer
 
@@ -208,6 +211,19 @@ namespace
         amc_pause
 
     } audio_message_code_t;
+
+    //////////////////////////////////////////////////////////////////////
+
+    typedef enum audio_state
+    {
+        audio_state_idle = 0,
+        audio_state_playing = 1,
+        audio_state_paused = 2,
+        audio_state_ending = 3,
+
+    } audio_state_t;
+
+    audio_state_t audio_current_state;
 
     //////////////////////////////////////////////////////////////////////
 
@@ -526,7 +542,7 @@ namespace
         uint16_t fill_word;
         ESP_RETURN_IF_FAILED(wram_read_value(PARAMETER_LOCATION_END_FILL_BYTE, &fill_word));
         fill_byte = fill_word & 0xff;
-        AUDIO_LOG("Fill byte: %02x", fill_byte);
+        AUDIO_LOG("Fill word: %04x", fill_word);
         return ESP_OK;
     }
 
@@ -535,6 +551,8 @@ namespace
     esp_err_t startup()
     {
         LOG_I("startup");
+
+        ESP_RETURN_IF_NULL(audio_event_group_handle = xEventGroupCreate());
 
         ESP_RETURN_IF_NULL(spi_event_group_handle = xEventGroupCreate());
 
@@ -731,9 +749,10 @@ namespace
         AUDIO_LOG("Stopping...");
 
         get_fill_byte();
-        ending_sent = 0;
-        ending = true;
+        end_bytes_sent = 0;
         playback_ptr = nullptr;
+        playback_remain = 0;
+        audio_current_state = audio_state_ending;
     }
 
     //////////////////////////////////////////////////////////////////////
@@ -750,11 +769,88 @@ namespace
 
             bool busy = false;
 
-            // if ending do it regardless and do nothing else
+            audio_message_t msg = { .code = amc_null, .volume = 0 };
 
-            if(ending) {
+            if(xQueueReceive(audio_command_queue, &msg, 0)) {
 
-                // send 32 bytes of end_fill_byte
+                busy = true;
+
+                LOG_V("got msg %d", msg.code);
+
+                switch(msg.code) {
+
+                case amc_play:
+
+                    audio_current_state = audio_state_playing;
+                    break;
+
+                case amc_stop:
+
+                    if(audio_current_state == audio_state_playing) {
+                        stop_decoding();
+                    }
+                    break;
+
+                case amc_volume:
+
+                    LOG_I("Set volume to %d", msg.volume);
+                    sci_write(SCI_VOL, (msg.volume << 8) | msg.volume);
+                    break;
+
+                case amc_pause:
+
+                    if(audio_current_state == audio_state_playing) {
+                        audio_current_state = audio_state_paused;
+                    }
+                    break;
+
+                default:
+
+                    LOG_E("BAD audio msg code: %d", msg.code);
+                    break;
+                }
+            }
+
+            switch(audio_current_state) {
+
+            case audio_state_playing: {
+
+                busy = true;
+
+                if(playback_remain == 0) {
+
+                    current_chunk = reinterpret_cast<uint8_t *>(xRingbufferReceive(ring_buffer, &playback_remain, 0));
+
+                    if(current_chunk != nullptr) {
+                        playback_ptr = current_chunk;
+                        busy = true;
+                        xEventGroupClearBits(audio_event_group_handle, AUDIO_EVENT_BIT_RING_BUFFER_EMPTY);
+                    } else {
+                        xEventGroupSetBits(audio_event_group_handle, AUDIO_EVENT_BIT_RING_BUFFER_EMPTY);
+                    }
+                }
+
+                if(playback_ptr != nullptr && playback_remain != 0) {
+
+                    size_t fragment_length = min(32u, playback_remain);
+
+                    uint8_t *buffer = dma_buffer[dma_buffer_id];
+                    memcpy(buffer, playback_ptr, fragment_length);
+                    send_buffer(buffer, fragment_length);
+
+                    dma_buffer_id = 1 - dma_buffer_id;
+
+                    playback_ptr += fragment_length;
+                    playback_remain -= fragment_length;
+
+                    if(playback_remain == 0) {
+                        vRingbufferReturnItem(ring_buffer, current_chunk);
+                        current_chunk = nullptr;
+                    }
+                }
+            } break;
+
+            case audio_state_ending: {
 
                 busy = true;
                 uint8_t *buffer = dma_buffer[dma_buffer_id];
@@ -762,98 +858,42 @@ namespace
                 send_buffer(buffer, 32);
                 dma_buffer_id = 1 - dma_buffer_id;
 
-                ending_sent += 32;    // track how much end_fill_byte has been sent
+                end_bytes_sent += 32;    // track how much end_fill_byte has been sent
 
-                if(ending_sent >= (2052 + 32 + 2048)) {    // apparently this condition is 'very rare'
+                if(end_bytes_sent >= (2052 + 32 + 2048)) {    // apparently this condition is 'very rare'
 
                     AUDIO_LOG("SOFTWARE RESET THE VS1052 BECAUSE VERY RARE EVENT!");
                     sci_write(SCI_AIADDR, 0x50);
                     vTaskDelay(pdMS_TO_TICKS(100));
-                    ending = false;
+                    xEventGroupSetBits(audio_event_group_handle, AUDIO_EVENT_BIT_ENDED);
+                    audio_current_state = audio_state_idle;
 
                 } else {
 
                     uint16_t mode;
                     sci_read(SCI_MODE, &mode);
 
-                    if(ending_sent >= (2052 + 64)) {    // if cancel was set, keep going until it's cleared by the vs1053
+                    if(end_bytes_sent >= (2052 + 64)) {    // if cancel was set, keep going until it's cleared by the vs1053
 
                         if((mode & SM_CANCEL) == 0) {
                             AUDIO_LOG("finished ending");
                             playback_ptr = nullptr;
-                            ending = false;
-                            sci_write(SCI_VOL, 0xff);
+                            audio_current_state = audio_state_idle;
+                            xEventGroupSetBits(audio_event_group_handle, AUDIO_EVENT_BIT_ENDED);
                         }
 
-                    } else if(ending_sent >= 2052) {    // cancel not yet set, have we sent enough to set it?
+                    } else if(end_bytes_sent >= 2052) {    // cancel not yet set, have we sent enough to set it?
 
                         mode |= SM_CANCEL;
                         sci_write(SCI_MODE, mode);
                     }
                 }
-                continue;
+            } break;
+
+            default:
+                break;
             }
 
-            // if drained ask for more data
-
-            if(playback_remain == 0) {
-                // AUDIO_LOG("ASKING");
-                current_chunk = reinterpret_cast<uint8_t *>(xRingbufferReceive(ring_buffer, &playback_remain, 0));
-                if(current_chunk == nullptr) {
-                    playback_remain = 0;
-                } else {
-                    // AUDIO_LOG("GOT %u bytes", playback_remain);
-                    playback_ptr = current_chunk;
-                    busy = true;
-                }
-            }
-
-            // handle commands
-
-            audio_message_t msg;
-
-            if(xQueueReceive(audio_command_queue, &msg, 0)) {
-
-                busy = true;
-
-                AUDIO_LOG("got msg %d", msg.code);
-
-                switch(msg.code) {
-
-                case amc_stop:
-                    stop_decoding();
-                    break;
-
-                case amc_volume:
-                    LOG_I("Set volume to %d", msg.volume);
-                    sci_write(SCI_VOL, (msg.volume << 8) | msg.volume);
-                    break;
-
-                default:
-                    break;
-                }
-            }
-
-            // send some data if we're playing
-
-            if(playback_ptr != nullptr && playback_remain != 0) {
-                busy = true;
-                size_t fragment_length = min(32u, playback_remain);
-
-                uint8_t *buffer = dma_buffer[dma_buffer_id];
-                memcpy(buffer, playback_ptr, fragment_length);
-                send_buffer(buffer, fragment_length);
-
-                dma_buffer_id = 1 - dma_buffer_id;
-
-                playback_ptr += fragment_length;
-                playback_remain -= fragment_length;
-
-                if(playback_remain == 0) {
-                    vRingbufferReturnItem(ring_buffer, current_chunk);
-                    current_chunk = nullptr;
-                }
-            }
             if(!busy) {
                 portYIELD();
             }
@@ -972,5 +1012,13 @@ esp_err_t audio_send_buffer(uint8_t *ptr)
     if(xRingbufferSendComplete(ring_buffer, ptr) != pdTRUE) {
         return ESP_FAIL;
     }
+    return ESP_OK;
+}
+
+//////////////////////////////////////////////////////////////////////
+
+esp_err_t audio_wait_for_sound_complete(TickType_t wait_for_ticks)
+{
+    xEventGroupWaitBits(audio_event_group_handle, AUDIO_EVENT_BIT_RING_BUFFER_EMPTY, pdTRUE, pdTRUE, wait_for_ticks);
     return ESP_OK;
 }
