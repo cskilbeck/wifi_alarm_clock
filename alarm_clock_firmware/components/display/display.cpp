@@ -45,9 +45,13 @@ namespace
 
     struct display_list_node
     {
-        uint16_t next;
-        uint16_t flags;
+        uint32_t next : 16;
+        uint32_t blendmode : 2;    // see enum display_blendmode
+        uint32_t textured : 1;     // 0 = solid color fill, 1 = textured
+        uint32_t pad : 13;
     };
+
+    static_assert(sizeof(display_list_node) == sizeof(uint32_t));
 
     //////////////////////////////////////////////////////////////////////
 
@@ -365,7 +369,8 @@ void display_imagerect(vec2i const *dst_pos, vec2i const *src_pos, vec2i const *
         e->blit.image_id = image_id;
         e->blit.src_pos = vec2b{ (uint8_t)src.x, (uint8_t)src_y };
         e->blit.alpha = alpha;
-        e->node.flags = blendmode | 0x8000;
+        e->node.blendmode = blendmode;
+        e->node.textured = 1;
 
         src_y += cur_height;
         remaining_height -= cur_height;
@@ -435,7 +440,8 @@ void display_fillrect(vec2i const *dst_pos, vec2i const *size, uint32_t color, u
         e->pos = vec2b{ (uint8_t)dst_pos->x, (uint8_t)dst_y };
         e->size = vec2b{ (uint8_t)size->x, (uint8_t)cur_height };
         e->color = color;
-        e->node.flags = blendmode;
+        e->node.blendmode = blendmode;
+        e->node.textured = 0;
 
         remaining_height -= cur_height;
         dst_y = 0;
@@ -445,8 +451,6 @@ void display_fillrect(vec2i const *dst_pos, vec2i const *size, uint32_t color, u
 }
 
 //////////////////////////////////////////////////////////////////////
-// assumes buffer is 240x16 18bpp
-// which means 135 uint32 per line
 
 void display_list_draw(int section, uint8_t *buffer)
 {
@@ -462,9 +466,9 @@ void display_list_draw(int section, uint8_t *buffer)
 
         display_list_entry const &e = get_display_list_entry(offset);
 
-        if(e.node.flags & 0x8000) {
+        if(e.node.textured) {
 
-            switch(e.node.flags & 3) {
+            switch(e.node.blendmode) {
             case blend_opaque:
                 do_blit<do_blend_opaque>(e, draw_buffer);
                 break;
@@ -479,7 +483,7 @@ void display_list_draw(int section, uint8_t *buffer)
             }
 
         } else {
-            switch(e.node.flags & 3) {
+            switch(e.node.blendmode) {
             case blend_opaque:
                 do_fill<do_blend_opaque>(e, draw_buffer);
                 break;
