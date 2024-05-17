@@ -172,9 +172,13 @@ namespace
 
     uint8_t fill_byte;
 
+    // this is set when we're ending playback
+
+    bool ending = false;
+
     // how many end_fill_bytes to send
 
-    size_t ending_length = 0;
+    size_t ending_sent = 0;
 
     // chunk of compressed data we got from the ring buffer
 
@@ -641,13 +645,16 @@ namespace
 
         vTaskDelay(pdMS_TO_TICKS(100));
 
-        sci_write(SCI_MODE, SM_SDINEW | SM_RESET);
+        // loading the plugin will do a software reset so this is unnecessary and in fact
+        // causes problems because we want the WRAM_GPIO_XXX values to be retained
 
-        vTaskDelay(pdMS_TO_TICKS(100));
+        // sci_write(SCI_MODE, SM_SDINEW | SM_RESET);
 
-        wait_for_dreq();
+        // vTaskDelay(pdMS_TO_TICKS(100));
 
-        AUDIO_LOG("VS1053 reset complete");
+        // wait_for_dreq();
+
+        // AUDIO_LOG("VS1053 reset complete");
 
 #endif
 
@@ -724,8 +731,8 @@ namespace
         AUDIO_LOG("Stopping...");
 
         get_fill_byte();
-        ending_length = 2052 + 32;
-
+        ending_sent = 0;
+        ending = true;
         playback_ptr = nullptr;
     }
 
@@ -743,88 +750,108 @@ namespace
 
             bool busy = false;
 
-            // if ending do it regardless
+            // if ending do it regardless and do nothing else
 
-            if(ending_length != 0) {
+            if(ending) {
+
+                // send 32 bytes of end_fill_byte
 
                 busy = true;
-                size_t send = min(32u, ending_length);
                 uint8_t *buffer = dma_buffer[dma_buffer_id];
-                memset(buffer, fill_byte, send);
-                send_buffer(buffer, send);
+                memset(buffer, fill_byte, 32);
+                send_buffer(buffer, 32);
                 dma_buffer_id = 1 - dma_buffer_id;
-                ending_length -= send;
-                if(ending_length <= 32) {
+
+                ending_sent += 32;    // track how much end_fill_byte has been sent
+
+                if(ending_sent >= (2052 + 32 + 2048)) {    // apparently this condition is 'very rare'
+
+                    AUDIO_LOG("SOFTWARE RESET THE VS1052 BECAUSE VERY RARE EVENT!");
+                    sci_write(SCI_AIADDR, 0x50);
+                    vTaskDelay(pdMS_TO_TICKS(100));
+                    ending = false;
+
+                } else {
+
                     uint16_t mode;
                     sci_read(SCI_MODE, &mode);
-                    mode |= SM_CANCEL;
-                    sci_write(SCI_MODE, mode);
-                } else if(ending_length == 0) {
-                    AUDIO_LOG("finished ending");
-                    playback_ptr = nullptr;
+
+                    if(ending_sent >= (2052 + 64)) {    // if cancel was set, keep going until it's cleared by the vs1053
+
+                        if((mode & SM_CANCEL) == 0) {
+                            AUDIO_LOG("finished ending");
+                            playback_ptr = nullptr;
+                            ending = false;
+                            sci_write(SCI_VOL, 0xff);
+                        }
+
+                    } else if(ending_sent >= 2052) {    // cancel not yet set, have we sent enough to set it?
+
+                        mode |= SM_CANCEL;
+                        sci_write(SCI_MODE, mode);
+                    }
                 }
+                continue;
+            }
 
-            } else {
+            // if drained ask for more data
 
-                // if drained ask for more data
+            if(playback_remain == 0) {
+                // AUDIO_LOG("ASKING");
+                current_chunk = reinterpret_cast<uint8_t *>(xRingbufferReceive(ring_buffer, &playback_remain, 0));
+                if(current_chunk == nullptr) {
+                    playback_remain = 0;
+                } else {
+                    // AUDIO_LOG("GOT %u bytes", playback_remain);
+                    playback_ptr = current_chunk;
+                    busy = true;
+                }
+            }
+
+            // handle commands
+
+            audio_message_t msg;
+
+            if(xQueueReceive(audio_command_queue, &msg, 0)) {
+
+                busy = true;
+
+                AUDIO_LOG("got msg %d", msg.code);
+
+                switch(msg.code) {
+
+                case amc_stop:
+                    stop_decoding();
+                    break;
+
+                case amc_volume:
+                    LOG_I("Set volume to %d", msg.volume);
+                    sci_write(SCI_VOL, (msg.volume << 8) | msg.volume);
+                    break;
+
+                default:
+                    break;
+                }
+            }
+
+            // send some data if we're playing
+
+            if(playback_ptr != nullptr && playback_remain != 0) {
+                busy = true;
+                size_t fragment_length = min(32u, playback_remain);
+
+                uint8_t *buffer = dma_buffer[dma_buffer_id];
+                memcpy(buffer, playback_ptr, fragment_length);
+                send_buffer(buffer, fragment_length);
+
+                dma_buffer_id = 1 - dma_buffer_id;
+
+                playback_ptr += fragment_length;
+                playback_remain -= fragment_length;
 
                 if(playback_remain == 0) {
-                    // AUDIO_LOG("ASKING");
-                    current_chunk = reinterpret_cast<uint8_t *>(xRingbufferReceive(ring_buffer, &playback_remain, 0));
-                    if(current_chunk == nullptr) {
-                        playback_remain = 0;
-                    } else {
-                        // AUDIO_LOG("GOT %u bytes", playback_remain);
-                        playback_ptr = current_chunk;
-                        busy = true;
-                    }
-                }
-
-                // handle commands
-
-                audio_message_t msg;
-
-                if(xQueueReceive(audio_command_queue, &msg, 0)) {
-
-                    busy = true;
-
-                    AUDIO_LOG("got msg %d", msg.code);
-
-                    switch(msg.code) {
-
-                    case amc_stop:
-                        stop_decoding();
-                        break;
-
-                    case amc_volume:
-                        LOG_I("Set volume to %d", msg.volume);
-                        sci_write(SCI_VOL, (msg.volume << 8) | msg.volume);
-                        break;
-
-                    default:
-                        break;
-                    }
-                }
-
-                // send some data if we're playing
-
-                if(playback_ptr != nullptr && playback_remain != 0) {
-                    busy = true;
-                    size_t fragment_length = min(32u, playback_remain);
-
-                    uint8_t *buffer = dma_buffer[dma_buffer_id];
-                    memcpy(buffer, playback_ptr, fragment_length);
-                    send_buffer(buffer, fragment_length);
-
-                    dma_buffer_id = 1 - dma_buffer_id;
-
-                    playback_ptr += fragment_length;
-                    playback_remain -= fragment_length;
-
-                    if(playback_remain == 0) {
-                        vRingbufferReturnItem(ring_buffer, current_chunk);
-                        current_chunk = nullptr;
-                    }
+                    vRingbufferReturnItem(ring_buffer, current_chunk);
+                    current_chunk = nullptr;
                 }
             }
             if(!busy) {
@@ -860,7 +887,7 @@ esp_err_t audio_init()
 
     // create the ring buffer which is used to send compressed audio data to the audio task
 
-    ESP_RETURN_IF_NULL(ring_buffer = xRingbufferCreate(32768, RINGBUF_TYPE_NOSPLIT));
+    ESP_RETURN_IF_NULL(ring_buffer = xRingbufferCreate(65536, RINGBUF_TYPE_NOSPLIT));
 
     AUDIO_LOG("Create audio task");
 
