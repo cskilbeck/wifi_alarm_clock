@@ -94,7 +94,7 @@ esp_err_t font_init(font_data const *fnt, char const *name, uint8_t const *png_s
 
     new_font->name = name;
     new_font->font_struct = fnt;
-    esp_err_t ret = image_decode_png(&new_font->image_index, png_start, png_end - png_start);
+    esp_err_t ret = image_decode_png(name, &new_font->image_index, png_start, png_end - png_start);
 
     if(ret == ESP_OK) {
         *handle = new_font;

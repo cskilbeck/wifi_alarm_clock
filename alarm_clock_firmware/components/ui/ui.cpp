@@ -99,50 +99,73 @@ ui_draw_item_handle_t ui_add_item(ui_draw_priority_t priority, ui_draw_function_
 
 //////////////////////////////////////////////////////////////////////
 
-void ui_remove_item(ui_draw_item_handle_t item)
+esp_err_t ui_remove_item(ui_draw_item_handle_t item)
 {
-    assert(item != nullptr);
+    if(item == nullptr) {
+        return ESP_ERR_INVALID_ARG;
+    }
     free_draw_item(item);
+    return ESP_OK;
 }
 
 //////////////////////////////////////////////////////////////////////
 
-void ui_item_change_priority(ui_draw_item_handle_t item, ui_draw_priority new_priority)
+esp_err_t ui_item_change_priority(ui_draw_item_handle_t item, ui_draw_priority new_priority)
 {
+    if(item == nullptr) {
+        return ESP_ERR_INVALID_ARG;
+    }
     if(new_priority == item->priority) {
-        return;
+        return ESP_OK;
     }
     live_draw_items[item->priority].remove(item);
     item->priority = new_priority;
     live_draw_items[new_priority].push_back(item);
+    return ESP_OK;
 }
 
 //////////////////////////////////////////////////////////////////////
 
-ui_draw_item_flags ui_item_get_flags(ui_draw_item_handle_t item)
+esp_err_t ui_item_get_flags(ui_draw_item_handle_t item, ui_draw_item_flags *flags)
 {
-    return static_cast<ui_draw_item_flags>(item->flags);
+    if(item == nullptr || flags == nullptr) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    *flags = static_cast<ui_draw_item_flags>(item->flags);
+    return ESP_OK;
 }
 
 //////////////////////////////////////////////////////////////////////
 
-void ui_item_set_flags(ui_draw_item_handle_t item, ui_draw_item_flags flags)
+esp_err_t ui_item_set_flags(ui_draw_item_handle_t item, ui_draw_item_flags flags)
 {
+    if(item == nullptr) {
+        return ESP_ERR_INVALID_ARG;
+    }
     item->flags |= flags;
+    return ESP_OK;
 }
 
 //////////////////////////////////////////////////////////////////////
 
-void ui_item_clear_flags(ui_draw_item_handle_t item, ui_draw_item_flags flags)
+esp_err_t ui_item_clear_flags(ui_draw_item_handle_t item, ui_draw_item_flags flags)
 {
+    if(item == nullptr) {
+        return ESP_ERR_INVALID_ARG;
+    }
     item->flags &= ~flags;
+    return ESP_OK;
 }
 
 //////////////////////////////////////////////////////////////////////
 
-void ui_item_toggle_flags(ui_draw_item_handle_t item, ui_draw_item_flags flags)
+esp_err_t ui_item_toggle_flags(ui_draw_item_handle_t item, ui_draw_item_flags flags)
 {
+    if(item == nullptr) {
+        return ESP_ERR_INVALID_ARG;
+    }
     item->flags ^= flags;
+    return ESP_OK;
 }
 
 //////////////////////////////////////////////////////////////////////

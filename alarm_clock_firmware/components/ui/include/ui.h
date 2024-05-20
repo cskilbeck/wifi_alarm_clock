@@ -75,11 +75,11 @@ typedef struct ui_draw_item *ui_draw_item_handle_t;
 //////////////////////////////////////////////////////////////////////
 
 ui_draw_item_handle_t ui_add_item(ui_draw_priority_t priority, ui_draw_function_t draw_function);
-void ui_remove_item(ui_draw_item_handle_t item);
-void ui_item_change_priority(ui_draw_item_handle_t item, ui_draw_priority new_priority);
-void ui_item_clear_flags(ui_draw_item_handle_t item, ui_draw_item_flags flags);
-void ui_item_set_flags(ui_draw_item_handle_t item, ui_draw_item_flags flags);
-void ui_item_toggle_flags(ui_draw_item_handle_t item, ui_draw_item_flags flags);
+esp_err_t ui_remove_item(ui_draw_item_handle_t item);
+esp_err_t ui_item_change_priority(ui_draw_item_handle_t item, ui_draw_priority new_priority);
+esp_err_t ui_item_clear_flags(ui_draw_item_handle_t item, ui_draw_item_flags flags);
+esp_err_t ui_item_set_flags(ui_draw_item_handle_t item, ui_draw_item_flags flags);
+esp_err_t ui_item_toggle_flags(ui_draw_item_handle_t item, ui_draw_item_flags flags);
 ui_draw_item_flags ui_item_get_flags(ui_draw_item_handle_t item);
 
 //////////////////////////////////////////////////////////////////////

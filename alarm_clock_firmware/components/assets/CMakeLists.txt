@@ -12,6 +12,7 @@ set(COMPONENT_EMBED_FILES
     "image/face.png"
     "image/blip.png"
     "image/small_blip.png"
+    "image/world.png"
     "audio/example.mp3"
     "audio/boing.mp3"
     )

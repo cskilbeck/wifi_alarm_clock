@@ -47,6 +47,9 @@ namespace
     encoder_handle_t encoder_handle;
     int frame = 0;
 
+    float rotation = 0;
+    float rotation_vel = 0;
+
 }    // namespace
 
 //////////////////////////////////////////////////////////////////////
@@ -160,10 +163,12 @@ ui_input_handler_status ui_handler(int frame)
 
         case ENCODER_MSG_ROTATE_CW:
             alpha = min(255, alpha + 8);
+            rotation_vel += 2;
             break;
 
         case ENCODER_MSG_ROTATE_CCW:
             alpha = max(0, alpha - 8);
+            rotation_vel -= 2;
             break;
 
         default:
@@ -194,7 +199,7 @@ void draw_face(int frame)
 
     vec2i dst_pos = { x, y };
     vec2f pivot = { 0.5f, 0.5f };
-    display_image(&dst_pos, face_image_id, alpha, blend_multiply, &pivot);
+    display_image(&dst_pos, image_id_face, alpha, blend_multiply, &pivot);
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -244,7 +249,7 @@ void draw_text(int frame)
 
 void draw_seconds(int frame)
 {
-    image_t const *src_img = image_get(blip_image_id);
+    image_t const *src_img = image_get(image_id_blip);
     for(int i = 0; i <= seconds; ++i) {
         float t = (float)i * M_TWOPI / 60.0f;
         float x = sinf(t) * 114 + 120;
@@ -254,10 +259,10 @@ void draw_seconds(int frame)
         vec2i dst_pos = { (int)x, (int)y };
         dst_pos.x -= size.x / 2;
         dst_pos.y -= size.y / 2;
-        display_imagerect(&dst_pos, &src_pos, &size, blip_image_id, 0xff, blend_add);
+        display_imagerect(&dst_pos, &src_pos, &size, image_id_blip, 0xff, blend_add);
     }
 
-    src_img = image_get(small_blip_image_id);
+    src_img = image_get(image_id_small_blip);
     for(int i = 0; i < 60; i += 5) {
         float t = (float)i * M_TWOPI / 60.0f;
         float x = sinf(t) * 104 + 120;
@@ -267,7 +272,7 @@ void draw_seconds(int frame)
         vec2i dst_pos = { (int)x, (int)y };
         dst_pos.x -= size.x / 2;
         dst_pos.y -= size.y / 2;
-        display_imagerect(&dst_pos, &src_pos, &size, small_blip_image_id, 0xff, blend_add);
+        display_imagerect(&dst_pos, &src_pos, &size, image_id_small_blip, 0xff, blend_add);
     }
 }
 
@@ -302,16 +307,16 @@ void main_ui_task(void *)
         ui_timer_args.dispatch_method = ESP_TIMER_TASK;
         ui_timer_args.skip_unhandled_events = false;
         ESP_ERROR_CHECK(esp_timer_create(&ui_timer_args, &ui_timer_handle));
-        esp_timer_start_periodic(ui_timer_handle, 1000000 / 30);
+        esp_timer_start_periodic(ui_timer_handle, 1000000 / 50);
     }
 
-    ui_add_item(ui_draw_priority_0, draw_cls);
-    ui_add_item(ui_draw_priority_0, draw_seconds);
-    ui_add_item(ui_draw_priority_0, draw_text);
+    // ui_add_item(ui_draw_priority_0, draw_cls);
+    // ui_add_item(ui_draw_priority_0, draw_seconds);
+    // ui_add_item(ui_draw_priority_0, draw_text);
 
-    ui_item_time = ui_add_item(ui_draw_priority_7, draw_time);
+    // ui_item_time = ui_add_item(ui_draw_priority_7, draw_time);
 
-    ui_add_item(ui_draw_priority_6, draw_face);
+    // ui_add_item(ui_draw_priority_6, draw_face);
 
     ui_push_input_handler(ui_handler);
 
@@ -329,7 +334,21 @@ void main_ui_task(void *)
 
         display_begin_frame();
 
-        ui_draw(frame);
+        // ui_draw(frame);
+
+        rotation += rotation_vel;
+
+        while(rotation < 0) {
+            rotation += 480.0f;
+        }
+
+        while(rotation >= 480.0f) {
+            rotation -= 480.0f;
+        }
+
+        rotation_vel *= 0.9f;
+
+        display_sphere((int)rotation, image_id_world, 255, blend_opaque);
 
         display_end_frame();
 
@@ -355,6 +374,7 @@ extern "C" void app_main(void)
     }
     ESP_ERROR_CHECK(esp_netif_init());
 
+    image_init();
     audio_init();
     display_init();
     assets_init();
@@ -369,7 +389,7 @@ extern "C" void app_main(void)
 
     int64_t t = esp_timer_get_time();
     int64_t now;
-    int64_t fade_time_uS = 500000ll;
+    int64_t fade_time_uS = 2000000ll;
 
     while((now = esp_timer_get_time() - t) <= fade_time_uS) {
         uint32_t b = min(8191lu, (uint32_t)(now * 9500 / fade_time_uS));

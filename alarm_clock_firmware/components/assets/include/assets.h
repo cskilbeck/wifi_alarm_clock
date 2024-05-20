@@ -18,6 +18,10 @@ extern const uint8_t test_png_start[] asm("_binary_test_png_start");
 extern const uint8_t test_png_end[] asm("_binary_test_png_end");
 #define test_png_size ((size_t)(test_png_end - test_png_start))
 
+extern const uint8_t world_png_start[] asm("_binary_world_png_start");
+extern const uint8_t world_png_end[] asm("_binary_world_png_end");
+#define world_png_size ((size_t)(world_png_end - world_png_start))
+
 extern const uint8_t blip_png_start[] asm("_binary_blip_png_start");
 extern const uint8_t blip_png_end[] asm("_binary_blip_png_end");
 #define blip_png_size ((size_t)(blip_png_end - test_png_start))
@@ -53,10 +57,11 @@ extern font_handle_t forte_font;
 
 //////////////////////////////////////////////////////////////////////
 
-extern int blip_image_id;
-extern int small_blip_image_id;
-extern int face_image_id;
-extern int test_image_id;
+extern int image_id_blip;
+extern int image_id_small_blip;
+extern int image_id_face;
+extern int image_id_test;
+extern int image_id_world;
 
 //////////////////////////////////////////////////////////////////////
 

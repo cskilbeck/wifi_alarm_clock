@@ -12,7 +12,7 @@ extern "C" {
 
 typedef struct image
 {
-    uint32_t *pixel_data;
+    uint32_t const *pixel_data;
     int width;
     int height;
     int image_id;
@@ -20,9 +20,12 @@ typedef struct image
 
 //////////////////////////////////////////////////////////////////////
 
-image_t const *image_get(int image_id);
+esp_err_t image_init();
 
-esp_err_t image_decode_png(int *out_image_id, uint8_t const *png_data, size_t png_size);
+image_t const *image_get(int image_id);
+image_t const *image_get_unchecked(int image_id);
+
+esp_err_t image_decode_png(char const *name, int *out_image_id, uint8_t const *png_data, size_t png_size);
 
 //////////////////////////////////////////////////////////////////////
 

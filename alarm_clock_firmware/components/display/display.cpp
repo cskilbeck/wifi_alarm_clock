@@ -18,6 +18,7 @@
 //    add a cropped display list entry
 
 #include <memory.h>
+#include <math.h>
 #include <freertos/FreeRTOS.h>
 #include <esp_log.h>
 #include <stdint.h>
@@ -30,25 +31,38 @@
 LOG_CONTEXT("display");
 
 //////////////////////////////////////////////////////////////////////
+// max image size we can blit from is 512x512
+// max # of images is 64
 
-
-namespace
+namespace local
 {
+
+#include "circle_data.inc"
+
     struct blit_entry
     {
-        vec2b src_pos;
-        uint8_t image_id;
-        uint8_t alpha;
+        uint32_t src_x : 9;
+        uint32_t src_y : 9;
+        uint32_t image_id : 6;
+        uint8_t alpha : 8;
     };
 
     //////////////////////////////////////////////////////////////////////
+
+    typedef enum draw_mode
+    {
+        draw_mode_fill = 0,
+        draw_mode_blit = 1,
+        draw_mode_world_blit = 2
+
+    } draw_mode_t;
 
     struct display_list_node
     {
         uint32_t next : 16;
         uint32_t blendmode : 2;    // see enum display_blendmode
-        uint32_t textured : 1;     // 0 = solid color fill, 1 = textured
-        uint32_t pad : 13;
+        uint32_t draw_mode : 2;    // see enum draw_mode_t
+        uint32_t pad : 12;
     };
 
     static_assert(sizeof(display_list_node) == sizeof(uint32_t));
@@ -67,8 +81,8 @@ namespace
     {
         display_list_node node;
 
-        vec2b pos;
-        vec2b size;
+        vec2b pos;     // pos.y only needs 4 bits when LCD_SECTION_HEIGHT == 16
+        vec2b size;    // size.y only needs 4 bits when LCD_SECTION_HEIGHT == 16
 
         union
         {
@@ -77,19 +91,13 @@ namespace
         };
     };
 
-}    // namespace
-
-//////////////////////////////////////////////////////////////////////
-
-namespace
-{
     //////////////////////////////////////////////////////////////////////
 
 #if LCD_BITS_PER_PIXEL == 16
     uint8_t DRAM_ATTR display_buffer[LCD_WIDTH * 3 * LCD_SECTION_HEIGHT];
 #endif
 
-    uint8_t DRAM_ATTR display_list_buffer[3072];
+    uint8_t DRAM_ATTR display_list_buffer[32767];
 
     size_t display_list_used = 0;
 
@@ -100,6 +108,9 @@ namespace
 
     inline display_list_entry const &get_display_list_entry(uint16_t offset)
     {
+        if(offset > (sizeof(display_list_buffer) - sizeof(display_list_entry))) {
+            LOG_E("HUH? %04x", offset);
+        }
         assert(offset <= (sizeof(display_list_buffer) - sizeof(display_list_entry)));
 
         return *reinterpret_cast<display_list_entry *>(display_list_buffer + offset);
@@ -110,6 +121,7 @@ namespace
     inline display_list_entry *alloc_display_list_entry(display_list_t *display_list)
     {
         if(display_list_used > (sizeof(display_list_buffer) - sizeof(display_list_entry))) {
+            LOG_E("RUN OUT!?");
             return nullptr;
         }
 
@@ -125,6 +137,35 @@ namespace
 
         return entry;
     }
+
+#if LCD_BITS_PER_PIXEL == 16
+
+    //////////////////////////////////////////////////////////////////////
+    // convert display_buffer from ARGB32 to 16 bpp
+
+    void convert_display_buffer(uint8_t *dst)
+    {
+        uint8_t *src = display_buffer;
+
+        for(int y = 0; y < LCD_SECTION_HEIGHT; ++y) {
+
+            uint8_t *src_row = src;
+            uint16_t *dst_row = reinterpret_cast<uint16_t *>(dst);
+
+            for(int i = 0; i < LCD_WIDTH; i++) {
+
+                uint32_t r = *src_row++ >> 3 << 11;
+                uint32_t g = *src_row++ >> 2 << 5;
+                uint32_t b = *src_row++ >> 3;
+
+                *dst_row++ = __builtin_bswap16(r | g | b);
+            }
+            src += LCD_WIDTH * 3;
+            dst += LCD_BYTES_PER_LINE;
+        }
+    }
+
+#endif
 
     //////////////////////////////////////////////////////////////////////
 
@@ -195,14 +236,14 @@ namespace
 
     //////////////////////////////////////////////////////////////////////
 
-    template <typename T> void do_blit(display_list_entry const &e, uint8_t *buffer)
+    template <typename T> void do_blit(display_list_entry const &e, uint8_t *buffer, int section)
     {
         image_t const *source_image = image_get(e.blit.image_id);
 
         uint32_t stride = source_image->width;
 
         uint8_t *dst = buffer + (e.pos.x + e.pos.y * LCD_WIDTH) * 3;
-        uint32_t *src = (uint32_t *)(source_image->pixel_data + e.blit.src_pos.x + e.blit.src_pos.y * stride);
+        uint32_t *src = (uint32_t *)(source_image->pixel_data + e.blit.src_x + e.blit.src_y * stride);
 
         uint8_t alpha = e.blit.alpha;
 
@@ -215,7 +256,6 @@ namespace
                 T::blend(dst_row, *src_row++, alpha);
                 dst_row += 3;
             }
-
             src += stride;
             dst += LCD_WIDTH * 3;
         }
@@ -223,7 +263,7 @@ namespace
 
     //////////////////////////////////////////////////////////////////////
 
-    template <typename T> void do_fill(display_list_entry const &e, uint8_t *buffer)
+    template <typename T> void do_fill(display_list_entry const &e, uint8_t *buffer, int section)
     {
         uint8_t *dst = buffer + (e.pos.x + e.pos.y * LCD_WIDTH) * 3;
         uint8_t alpha = get_a(e.color);
@@ -241,36 +281,52 @@ namespace
         }
     }
 
-#if LCD_BITS_PER_PIXEL == 16
-
     //////////////////////////////////////////////////////////////////////
-    // convert display_buffer from ARGB32 to 16 bpp
+    // Hacky special for drawing the globe (very slowly!)
 
-    void convert_display_buffer(uint8_t *dst)
+    template <typename T> void do_sphere_blit(display_list_entry const &e, uint8_t *buffer, int section)
     {
-        uint8_t *src = display_buffer;
+        assert(e.pos.x == 0);
+        assert(e.pos.y < 16);
 
-        for(int y = 0; y < LCD_SECTION_HEIGHT; ++y) {
+        image_t const *source_image = image_get_unchecked(e.blit.image_id);
 
-            uint8_t *src_row = src;
-            uint16_t *dst_row = reinterpret_cast<uint16_t *>(dst);
+        int image_width = source_image->width;
 
-            for(int i = 0; i < LCD_WIDTH; i++) {
+        uint8_t *dst_row = buffer + (e.pos.x + e.pos.y * LCD_WIDTH) * 3;
 
-                uint32_t r = *src_row++ >> 3 << 11;
-                uint32_t g = *src_row++ >> 2 << 5;
-                uint32_t b = *src_row++ >> 3;
+        int screen_y = e.blit.src_y;
 
-                *dst_row++ = __builtin_bswap16(r | g | b);
+        uint32_t const *src = source_image->pixel_data + screen_y * image_width;
+
+        uint8_t alpha = e.blit.alpha;
+
+        int rotate = e.blit.src_x;
+
+        for(int y = 0; y < e.size.y; ++y) {
+
+            assert(y == 0);
+
+            int const offset = circle_offsets[screen_y + y];
+
+            short const *row = circle_map + offset;
+
+            int width = *row;
+            row += 1;
+
+            uint8_t *dst = dst_row + (120 - width / 2) * 3;
+
+            for(int x = 0; x < width; ++x) {
+                do_blend_opaque::blend(dst, src[(row[x] + rotate) % image_width], alpha);
+                dst += 3;
             }
-            src += LCD_WIDTH * 3;
-            dst += LCD_BYTES_PER_LINE;
+            dst_row += LCD_WIDTH * 3;
         }
     }
 
-#endif
+}    // namespace local
 
-}    // namespace
+using namespace local;
 
 //////////////////////////////////////////////////////////////////////
 
@@ -298,6 +354,35 @@ void display_image(vec2i *pos, uint8_t image_id, uint8_t alpha, uint8_t blendmod
     vec2i size = { image->width, image->height };
     vec2i dst_pos = { pos->x - (int)(size.x * pivot->x), pos->y - (int)(size.y * pivot->y) };
     display_imagerect(&dst_pos, &src_pos, &size, image_id, alpha, blendmode);
+}
+
+//////////////////////////////////////////////////////////////////////
+
+void display_sphere(int offset, uint8_t image_id, uint8_t alpha, uint8_t blendmode)
+{
+    uint8_t src_y = 0;
+
+    for(display_list_t &d : display_lists) {
+
+        for(uint8_t y = 0; y < LCD_SECTION_HEIGHT; ++y) {
+
+            display_list_entry *e = alloc_display_list_entry(&d);
+            if(e == nullptr) {
+                return;
+            }
+
+            e->pos = vec2b{ 0, y };     // dummy x
+            e->size = vec2b{ 1, 1 };    // dummy w,h
+            e->blit.image_id = image_id;
+            e->blit.src_x = offset;
+            e->blit.src_y = src_y;
+            e->blit.alpha = alpha;
+            e->node.blendmode = blendmode;
+            e->node.draw_mode = draw_mode_world_blit;
+
+            src_y += 1;
+        }
+    }
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -367,10 +452,11 @@ void display_imagerect(vec2i const *dst_pos, vec2i const *src_pos, vec2i const *
         e->pos = vec2b{ (uint8_t)dst.x, (uint8_t)dst_y };
         e->size = vec2b{ (uint8_t)sz.x, (uint8_t)cur_height };
         e->blit.image_id = image_id;
-        e->blit.src_pos = vec2b{ (uint8_t)src.x, (uint8_t)src_y };
+        e->blit.src_x = src.x;
+        e->blit.src_y = src.y;
         e->blit.alpha = alpha;
         e->node.blendmode = blendmode;
-        e->node.textured = 1;
+        e->node.draw_mode = draw_mode_blit;
 
         src_y += cur_height;
         remaining_height -= cur_height;
@@ -441,7 +527,7 @@ void display_fillrect(vec2i const *dst_pos, vec2i const *size, uint32_t color, u
         e->size = vec2b{ (uint8_t)size->x, (uint8_t)cur_height };
         e->color = color;
         e->node.blendmode = blendmode;
-        e->node.textured = 0;
+        e->node.draw_mode = draw_mode_fill;
 
         remaining_height -= cur_height;
         dst_y = 0;
@@ -466,37 +552,57 @@ void display_list_draw(int section, uint8_t *buffer)
 
         display_list_entry const &e = get_display_list_entry(offset);
 
-        if(e.node.textured) {
-
+        switch(e.node.draw_mode) {
+        case draw_mode_blit:
             switch(e.node.blendmode) {
             case blend_opaque:
-                do_blit<do_blend_opaque>(e, draw_buffer);
+                do_blit<do_blend_opaque>(e, draw_buffer, section);
                 break;
             case blend_add:
-                do_blit<do_blend_add>(e, draw_buffer);
+                do_blit<do_blend_add>(e, draw_buffer, section);
                 break;
             case blend_multiply:
-                do_blit<do_blend_multiply>(e, draw_buffer);
+                do_blit<do_blend_multiply>(e, draw_buffer, section);
                 break;
             default:
                 break;
             }
+            break;
 
-        } else {
+        case draw_mode_world_blit:
             switch(e.node.blendmode) {
             case blend_opaque:
-                do_fill<do_blend_opaque>(e, draw_buffer);
+                do_sphere_blit<do_blend_opaque>(e, draw_buffer, section);
                 break;
             case blend_add:
-                do_fill<do_blend_add>(e, draw_buffer);
+                do_sphere_blit<do_blend_add>(e, draw_buffer, section);
                 break;
             case blend_multiply:
-                do_fill<do_blend_multiply>(e, draw_buffer);
+                do_sphere_blit<do_blend_multiply>(e, draw_buffer, section);
                 break;
             default:
                 break;
             }
+            break;
+
+        case draw_mode_fill:
+            switch(e.node.blendmode) {
+            case blend_opaque:
+                do_fill<do_blend_opaque>(e, draw_buffer, section);
+                break;
+            case blend_add:
+                do_fill<do_blend_add>(e, draw_buffer, section);
+                break;
+            case blend_multiply:
+                do_fill<do_blend_multiply>(e, draw_buffer, section);
+                break;
+            default:
+                break;
+            }
+        default:
+            break;
         }
+
         offset = e.node.next;
     }
 
