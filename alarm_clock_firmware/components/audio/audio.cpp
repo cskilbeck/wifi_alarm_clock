@@ -23,7 +23,7 @@
 
 LOG_CONTEXT("audio");
 
-#define AUDIO_LOG LOG_I
+#define AUDIO_LOG(...) LOG_I(__VA_ARGS__)
 // #define AUDIO_LOG(...)
 
 // #define SWITCH_TO_DECODE_MODE
@@ -107,9 +107,7 @@ LOG_CONTEXT("audio");
 #define WRAM_GPIO_IN 0xC018
 #define WRAM_GPIO_OUT 0xC019
 
-// mono mode requires the plugin to be loaded
-
-#define WRAM_MONO_MODE 0x1e09
+#define WRAM_MONO_MODE 0x1e09    // mono mode requires the plugin to be loaded
 
 #define CLEAR_BITS 1
 #define LEAVE_BITS 0
@@ -122,6 +120,7 @@ LOG_CONTEXT("audio");
 
 #define AUDIO_EVENT_BIT_RING_BUFFER_EMPTY (1 << 0)
 #define AUDIO_EVENT_BIT_ENDED (1 << 1)
+#define AUDIO_EVENT_BIT_INITIALIZED (1 << 2)
 
 namespace
 {
@@ -223,6 +222,8 @@ namespace
 
     } audio_state_t;
 
+    char const *audio_state_name[4] = { "idle", "playing", "paused", "ending" };
+
     audio_state_t audio_current_state;
 
     //////////////////////////////////////////////////////////////////////
@@ -313,6 +314,14 @@ namespace
             } vorbis;
         } i;
     };
+
+    //////////////////////////////////////////////////////////////////////
+
+    void set_audio_state(audio_state_t new_state)
+    {
+        LOG_I("Set audio state to %d (%s)", new_state, audio_state_name[new_state]);
+        audio_current_state = new_state;
+    }
 
     // vs1053_parameters parameters;
 
@@ -433,6 +442,8 @@ namespace
 
         *result = (tx.base.rx_data[0] << 8) | tx.base.rx_data[1];
 
+        AUDIO_LOG("SCI_READ[%d] = 0x%04x", reg_num, *result);
+
         return ESP_OK;
     }
 
@@ -552,8 +563,6 @@ namespace
     {
         LOG_I("startup");
 
-        ESP_RETURN_IF_NULL(audio_event_group_handle = xEventGroupCreate());
-
         ESP_RETURN_IF_NULL(spi_event_group_handle = xEventGroupCreate());
 
         xEventGroupSetBits(spi_event_group_handle, SPI_EVENT_BIT_COMPLETE);
@@ -622,11 +631,15 @@ namespace
 
         gpio_set_level(config.pin_num_reset, 0);
 
-        for(int i = 50; i != 0; i = i - 1) {
+        for(int i = 500; i != 0; --i) {
             __asm__ __volatile__("nop");
         }
 
         gpio_set_level(config.pin_num_reset, 1);
+
+        for(int i = 500; i != 0; --i) {
+            __asm__ __volatile__("nop");
+        }
 
         // check version == 4
 
@@ -647,6 +660,8 @@ namespace
             LOG_E("1053 version should be 4, got %d", version);
             return ESP_FAIL;
         }
+
+        LOG_I("Audio version = %d", version);
 
 #if defined(SWITCH_TO_DECODE_MODE)
 
@@ -682,7 +697,7 @@ namespace
 
         // set clock to 49.152 MHz
 
-        ESP_RETURN_IF_FAILED(sci_write_and_verify(SCI_CLOCKF, 0xA000, 0xffff));
+        ESP_RETURN_IF_FAILED(sci_write_and_verify(SCI_CLOCKF, 0x8800, 0xffff));
 
         // LC Breakout board needs this to enable audio decode mode
 
@@ -703,7 +718,7 @@ namespace
 
         spi_device_interface_config_t stream_spi_devcfg = {};
         stream_spi_devcfg.flags = SPI_DEVICE_NO_DUMMY;
-        stream_spi_devcfg.clock_speed_hz = 12000000;
+        stream_spi_devcfg.clock_speed_hz = 8000000;
         stream_spi_devcfg.spics_io_num = -1;
         stream_spi_devcfg.queue_size = 1;
         stream_spi_devcfg.post_cb = spi_post_transfer_complete;
@@ -717,7 +732,13 @@ namespace
 
         spi_device = fast_spi_device;
 
-        // callback - audio init complete
+        // create the queue which is used to send commands to the audio task
+
+        ESP_RETURN_IF_NULL(audio_command_queue = xQueueCreate(16, sizeof(audio_message_t)));
+
+        // create the ring buffer which is used to send compressed audio data to the audio task
+
+        ESP_RETURN_IF_NULL(ring_buffer = xRingbufferCreate(65536, RINGBUF_TYPE_NOSPLIT));
 
         return ESP_OK;
     }
@@ -752,14 +773,27 @@ namespace
         end_bytes_sent = 0;
         playback_ptr = nullptr;
         playback_remain = 0;
-        audio_current_state = audio_state_ending;
+        set_audio_state(audio_state_ending);
     }
 
     //////////////////////////////////////////////////////////////////////
 
     void audio_player(void *)
     {
-        ESP_ERROR_CHECK(startup());
+        audio_event_group_handle = xEventGroupCreate();
+
+        if(audio_event_group_handle == nullptr) {
+            LOG_E("ERROR Creaing audio event group handle!?");
+            vTaskDelete(nullptr);
+        }
+
+        esp_err_t ret = startup();
+
+        xEventGroupSetBits(audio_event_group_handle, AUDIO_EVENT_BIT_INITIALIZED);
+
+        if(ret != ESP_OK) {
+            vTaskDelete(nullptr);
+        }
 
         // main audio task loop
 
@@ -779,30 +813,32 @@ namespace
 
                 switch(msg.code) {
 
-                case amc_play:
+                case amc_play: {
 
-                    audio_current_state = audio_state_playing;
-                    break;
+                    set_audio_state(audio_state_playing);
+                    uint16_t status;
+                    sci_read(SCI_STATUS, &status);
+                    AUDIO_LOG("PLAY: STATUS = 0x%04x", status);
+                } break;
 
-                case amc_stop:
-
+                case amc_stop: {
                     if(audio_current_state == audio_state_playing) {
                         stop_decoding();
                     }
-                    break;
+                } break;
 
-                case amc_volume:
+                case amc_volume: {
 
                     LOG_I("Set volume to %d", msg.volume);
                     sci_write(SCI_VOL, (msg.volume << 8) | msg.volume);
-                    break;
+                } break;
 
-                case amc_pause:
+                case amc_pause: {
 
                     if(audio_current_state == audio_state_playing) {
-                        audio_current_state = audio_state_paused;
+                        set_audio_state(audio_state_paused);
                     }
-                    break;
+                } break;
 
                 default:
 
@@ -821,8 +857,9 @@ namespace
 
                     current_chunk = reinterpret_cast<uint8_t *>(xRingbufferReceive(ring_buffer, &playback_remain, 0));
 
-                    if(current_chunk != nullptr) {
-                        playback_ptr = current_chunk;
+                    playback_ptr = current_chunk;
+
+                    if(playback_ptr != nullptr) {
                         busy = true;
                         xEventGroupClearBits(audio_event_group_handle, AUDIO_EVENT_BIT_RING_BUFFER_EMPTY);
                     } else {
@@ -862,11 +899,11 @@ namespace
 
                 if(end_bytes_sent >= (2052 + 32 + 2048)) {    // apparently this condition is 'very rare'
 
-                    AUDIO_LOG("SOFTWARE RESET THE VS1052 BECAUSE VERY RARE EVENT!");
+                    AUDIO_LOG("********** SOFTWARE RESET THE VS1052 BECAUSE VERY RARE EVENT! **********");
                     sci_write(SCI_AIADDR, 0x50);
                     vTaskDelay(pdMS_TO_TICKS(100));
                     xEventGroupSetBits(audio_event_group_handle, AUDIO_EVENT_BIT_ENDED);
-                    audio_current_state = audio_state_idle;
+                    set_audio_state(audio_state_idle);
 
                 } else {
 
@@ -878,13 +915,14 @@ namespace
                         if((mode & SM_CANCEL) == 0) {
                             AUDIO_LOG("finished ending");
                             playback_ptr = nullptr;
-                            audio_current_state = audio_state_idle;
+                            set_audio_state(audio_state_idle);
                             xEventGroupSetBits(audio_event_group_handle, AUDIO_EVENT_BIT_ENDED);
                         }
 
-                    } else if(end_bytes_sent >= 2052) {    // cancel not yet set, have we sent enough to set it?
+                    } else if(end_bytes_sent >= 2052 + 32) {    // cancel not yet set, have we sent enough to set it?
 
-                        mode |= SM_CANCEL;
+                        AUDIO_LOG("Set CANCEL");
+                        mode |= SM_CANCEL | SM_SDINEW;    // seems you must set SDINEW whenever you write to SCI_MODE
                         sci_write(SCI_MODE, mode);
                     }
                 }
@@ -898,6 +936,20 @@ namespace
                 portYIELD();
             }
         }
+    }
+
+    //////////////////////////////////////////////////////////////////////
+
+    esp_err_t send_audio_msg(audio_message const &msg)
+    {
+        if(audio_command_queue == nullptr) {
+            return ESP_ERR_INVALID_STATE;
+        }
+        if(!xQueueSend(audio_command_queue, &msg, portMAX_DELAY)) {
+            LOG_E("audio_set_volume: xQueueSend failed");
+            return ESP_FAIL;
+        }
+        return ESP_OK;
     }
 
     //////////////////////////////////////////////////////////////////////
@@ -921,16 +973,6 @@ esp_err_t audio_init()
     config.pin_num_sclk = GPIO_NUM_40;
     config.spi_host = SPI3_HOST;
 
-    // create the queue which is used to send commands to the audio task
-
-    ESP_RETURN_IF_NULL(audio_command_queue = xQueueCreate(16, sizeof(audio_message_t)));
-
-    // create the ring buffer which is used to send compressed audio data to the audio task
-
-    ESP_RETURN_IF_NULL(ring_buffer = xRingbufferCreate(65536, RINGBUF_TYPE_NOSPLIT));
-
-    AUDIO_LOG("Create audio task");
-
     // kick off the audio task
 
     BaseType_t r = xTaskCreatePinnedToCore(audio_player, "audio", 4096, nullptr, 5, &audio_player_task_handle, 1);
@@ -944,22 +986,9 @@ esp_err_t audio_init()
 
 //////////////////////////////////////////////////////////////////////
 
-esp_err_t send_audio_msg(audio_message const &msg)
-{
-    if(!xQueueSend(audio_command_queue, &msg, portMAX_DELAY)) {
-        LOG_E("audio_set_volume: xQueueSend failed");
-        return ESP_FAIL;
-    }
-    return ESP_OK;
-}
-
-//////////////////////////////////////////////////////////////////////
-
 esp_err_t audio_set_volume(uint8_t volume)
 {
-    assert(audio_command_queue != nullptr);
-
-    LOG_I("audio_set_volume %d", volume);
+    LOG_V("audio_set_volume %d", volume);
     audio_message_t msg = {};
     msg.code = amc_volume;
     msg.volume = volume;
@@ -970,8 +999,6 @@ esp_err_t audio_set_volume(uint8_t volume)
 
 esp_err_t audio_play()
 {
-    assert(audio_command_queue != nullptr);
-
     LOG_I("audio_play");
     audio_message_t msg = {};
     msg.code = amc_play;
@@ -982,8 +1009,6 @@ esp_err_t audio_play()
 
 esp_err_t audio_stop()
 {
-    assert(audio_command_queue != nullptr);
-
     LOG_I("audio_stop");
     audio_message_t msg = {};
     msg.code = amc_stop;
@@ -994,12 +1019,14 @@ esp_err_t audio_stop()
 
 esp_err_t audio_acquire_buffer(size_t required, uint8_t **ptr, TickType_t ticks_to_wait)
 {
-    assert(audio_command_queue != nullptr);
-
+    if(ring_buffer == nullptr) {
+        return ESP_ERR_INVALID_STATE;
+    }
     if(xRingbufferSendAcquire(ring_buffer, reinterpret_cast<void **>(ptr), required, ticks_to_wait) == pdFALSE) {
         LOG_E("can't acquire %u bytes", required);
         return ESP_ERR_TIMEOUT;
     }
+
     return ESP_OK;
 }
 
@@ -1007,8 +1034,9 @@ esp_err_t audio_acquire_buffer(size_t required, uint8_t **ptr, TickType_t ticks_
 
 esp_err_t audio_send_buffer(uint8_t *ptr)
 {
-    assert(audio_command_queue != nullptr);
-
+    if(ring_buffer == nullptr) {
+        return ESP_ERR_INVALID_STATE;
+    }
     if(xRingbufferSendComplete(ring_buffer, ptr) != pdTRUE) {
         return ESP_FAIL;
     }
@@ -1017,8 +1045,33 @@ esp_err_t audio_send_buffer(uint8_t *ptr)
 
 //////////////////////////////////////////////////////////////////////
 
+esp_err_t audio_wait_for_send_complete(TickType_t wait_for_ticks)
+{
+    if(audio_event_group_handle == nullptr) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    xEventGroupWaitBits(audio_event_group_handle, AUDIO_EVENT_BIT_RING_BUFFER_EMPTY, pdTRUE, pdTRUE, wait_for_ticks);
+    return ESP_OK;
+}
+
+//////////////////////////////////////////////////////////////////////
+
 esp_err_t audio_wait_for_sound_complete(TickType_t wait_for_ticks)
 {
-    xEventGroupWaitBits(audio_event_group_handle, AUDIO_EVENT_BIT_RING_BUFFER_EMPTY, pdTRUE, pdTRUE, wait_for_ticks);
+    if(audio_event_group_handle == nullptr) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    xEventGroupWaitBits(audio_event_group_handle, AUDIO_EVENT_BIT_ENDED, pdTRUE, pdTRUE, wait_for_ticks);
+    return ESP_OK;
+}
+
+//////////////////////////////////////////////////////////////////////
+
+esp_err_t audio_wait_for_initialization_complete(TickType_t wait_for_ticks)
+{
+    if(audio_event_group_handle == nullptr) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    xEventGroupWaitBits(audio_event_group_handle, AUDIO_EVENT_BIT_INITIALIZED, LEAVE_BITS, WAIT_FOR_ALL, wait_for_ticks);
     return ESP_OK;
 }

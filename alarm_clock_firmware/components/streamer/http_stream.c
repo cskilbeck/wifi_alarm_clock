@@ -807,7 +807,7 @@ int http_stream_read(http_stream_handle_t http, char *buffer, int len, TickType_
         }
         http->info.byte_pos += rlen;
     }
-    ESP_LOGI(TAG, "req lengh=%d, read=%d, pos=%d/%d", len, rlen, (int)http->info.byte_pos, (int)http->info.total_bytes);
+    ESP_LOGI(TAG, "req length=%d, read=%d, pos=%d/%d", len, rlen, (int)http->info.byte_pos, (int)http->info.total_bytes);
     return rlen;
 }
 

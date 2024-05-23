@@ -42,6 +42,8 @@ LOG_CONTEXT("main");
 
 namespace
 {
+    int constexpr UI_FPS = 30;
+
     TaskHandle_t main_ui_task_handle;
     EventGroupHandle_t frame_timer_event_group_handle;
     encoder_handle_t encoder_handle;
@@ -50,37 +52,43 @@ namespace
     float rotation = 0;
     float rotation_vel = 0;
 
+    int volume = 0x40;
+
 }    // namespace
 
 //////////////////////////////////////////////////////////////////////
 
 void play_file(void *)
 {
+    audio_wait_for_initialization_complete(portMAX_DELAY);
+
     uint8_t const *src = boing_mp3_start;
     size_t remain = boing_mp3_size;
     // size_t remain = 200000;
 
     LOG_I("Play song %u bytes", boing_mp3_size);
 
-    audio_play();
-
-    while(remain != 0) {
-        uint8_t *buffer;
-        size_t fragment = min(2048u, remain);
-        audio_acquire_buffer(fragment, &buffer, portMAX_DELAY);
-        if(buffer != nullptr) {
-            memcpy(buffer, src, fragment);
-            audio_send_buffer(buffer);
-            src += fragment;
-            remain -= fragment;
-        } else {
-            LOG_E("Huh?");
-            vTaskDelay(pdMS_TO_TICKS(100));
+    if(audio_play() == ESP_OK) {
+        while(remain != 0) {
+            uint8_t *buffer;
+            size_t fragment = min(2048u, remain);
+            audio_acquire_buffer(fragment, &buffer, portMAX_DELAY);
+            if(buffer != nullptr) {
+                memcpy(buffer, src, fragment);
+                audio_send_buffer(buffer);
+                src += fragment;
+                remain -= fragment;
+            } else {
+                LOG_E("Huh?");
+                vTaskDelay(pdMS_TO_TICKS(100));
+            }
         }
+        audio_wait_for_send_complete(portMAX_DELAY);
+        LOG_I("Play song complete");
+        audio_stop();
+        audio_wait_for_sound_complete(portMAX_DELAY);
     }
-    audio_wait_for_sound_complete(portMAX_DELAY);
-    // LOG_I("AUDIO Complete?");
-    audio_stop();
+
     vTaskDelete(nullptr);
 }
 
@@ -92,45 +100,45 @@ void play_station()
 {
     http_stream_cfg_t stream_config;
     HTTP_STREAM_CFG_SET_DEFAULT(stream_config);
+
     stream_config.enable_playlist_parser = true;
     // stream_config.request_range_size = 1;
     http_stream_handle_t stream = http_stream_init(&stream_config);
 
-    // #define DEFAULT_STREAM_URI
-    // "http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_radio_fourfm/bbc_radio_fourfm.isml/bbc_radio_fourfm-audio=320000.m3u8"
-    //  #define DEFAULT_STREAM_URI "http://stream.live.vc.bbcmedia.co.uk/bbc_world_service"
-// #define DEFAULT_STREAM_URI "https://dl.espressif.com/dl/audio/ff-16b-2c-44100hz.mp3"
-#define DEFAULT_STREAM_URI "http://www.samisite.com/sound/cropShadesofGrayMonkees.mp3"
-    // #define DEFAULT_STREAM_URI "http://media-ice.musicradio.com/LBCLondon.m3u"
-    // #define DEFAULT_STREAM_URI "http://media-ice.musicradio.com/LBCUK.m3u"
-    // #define DEFAULT_STREAM_URI "http://media-ice.musicradio.com/LBCUKMP3Low"
+    // #define STREAM_URI "http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_radio_fourfm/bbc_radio_fourfm.isml/bbc_radio_fourfm-audio=320000.m3u8"
+    // #define STREAM_URI "http://stream.live.vc.bbcmedia.co.uk/bbc_world_service"
+    // #define STREAM_URI "https://dl.espressif.com/dl/audio/ff-16b-2c-44100hz.mp3"
+    // #define STREAM_URI "http://media-ice.musicradio.com/LBCLondon.m3u"
+    // #define STREAM_URI "http://media-ice.musicradio.com/LBCUK.m3u"
+    // #define STREAM_URI "http://media-ice.musicradio.com/LBCUKMP3Low"
 
-    esp_err_t ret = http_stream_open(stream, DEFAULT_STREAM_URI);
+#define STREAM_URI "http://www.samisite.com/sound/cropShadesofGrayMonkees.mp3"
+
+    esp_err_t ret = http_stream_open(stream, STREAM_URI);
     if(ret != ESP_OK) {
         LOG_E("http open ERROR %d:%s", ret, esp_err_to_name(ret));
     } else {
-        audio_play();
-        audio_set_volume(0x50);
-
-        while(true) {
-            int got = http_stream_read(stream, buffer, sizeof(buffer), portMAX_DELAY, nullptr);
-            LOG_I("%08lx", *reinterpret_cast<uint32_t *>(buffer));
-            if(got <= 0) {
-                break;
+        if(audio_play() == ESP_OK) {
+            while(true) {
+                int got = http_stream_read(stream, buffer, sizeof(buffer), portMAX_DELAY, nullptr);
+                LOG_I("%08lx", *reinterpret_cast<uint32_t *>(buffer));
+                if(got <= 0) {
+                    break;
+                }
+                uint8_t *audio_buffer;
+                audio_acquire_buffer(got, &audio_buffer, portMAX_DELAY);
+                if(audio_buffer != nullptr) {
+                    memcpy(audio_buffer, buffer, got);
+                    audio_send_buffer(audio_buffer);
+                } else {
+                    LOG_E("Huh?");
+                    vTaskDelay(pdMS_TO_TICKS(100));
+                }
             }
-            uint8_t *audio_buffer;
-            audio_acquire_buffer(got, &audio_buffer, portMAX_DELAY);
-            if(audio_buffer != nullptr) {
-                memcpy(audio_buffer, buffer, got);
-                audio_send_buffer(audio_buffer);
-            } else {
-                LOG_E("Huh?");
-                vTaskDelay(pdMS_TO_TICKS(100));
-            }
+            audio_wait_for_sound_complete(portMAX_DELAY);
+            audio_stop();
         }
     }
-    vTaskDelay(pdMS_TO_TICKS(2000));
-    audio_stop();
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -164,11 +172,15 @@ ui_input_handler_status ui_handler(int frame)
         case ENCODER_MSG_ROTATE_CW:
             alpha = min(255, alpha + 8);
             rotation_vel += 2;
+            volume = max(1, volume - 1);
+            audio_set_volume((uint8_t)volume);
             break;
 
         case ENCODER_MSG_ROTATE_CCW:
             alpha = max(0, alpha - 8);
             rotation_vel -= 2;
+            volume = min(255, volume + 1);
+            audio_set_volume((uint8_t)volume);
             break;
 
         default:
@@ -307,7 +319,7 @@ void main_ui_task(void *)
         ui_timer_args.dispatch_method = ESP_TIMER_TASK;
         ui_timer_args.skip_unhandled_events = false;
         ESP_ERROR_CHECK(esp_timer_create(&ui_timer_args, &ui_timer_handle));
-        esp_timer_start_periodic(ui_timer_handle, 1000000 / 50);
+        esp_timer_start_periodic(ui_timer_handle, 1000000 / UI_FPS);
     }
 
     // ui_add_item(ui_draw_priority_0, draw_cls);
@@ -376,16 +388,17 @@ extern "C" void app_main(void)
 
     image_init();
     audio_init();
-    display_init();
     assets_init();
-
-    xTaskCreatePinnedToCore(play_file, "play_file", 3072, nullptr, 5, nullptr, 0);
-
+    display_init();
     wifi_init();
 
-    if(xTaskCreatePinnedToCore(main_ui_task, "main_ui", 4096, NULL, 15, &main_ui_task_handle, 1) != pdTRUE) {
-        assert(false && "failed to create main ui task");
-    }
+    LOG_I("Audio init complete");
+
+    audio_wait_for_initialization_complete(portMAX_DELAY);
+
+    xTaskCreatePinnedToCore(play_file, "play_file", 3072, nullptr, 15, nullptr, 1);
+
+    xTaskCreatePinnedToCore(main_ui_task, "main_ui", 4096, NULL, 15, &main_ui_task_handle, 1);
 
     int64_t t = esp_timer_get_time();
     int64_t now;
@@ -399,5 +412,5 @@ extern "C" void app_main(void)
 
     xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_EVENT, pdFALSE, pdTRUE, portMAX_DELAY);
 
-    // play_station();
+    play_station();
 }
