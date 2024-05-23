@@ -695,7 +695,7 @@ namespace
 
         ESP_RETURN_IF_FAILED(load_plugin());
 
-        // set clock to 49.152 MHz
+        // set clock to 3.5 + 1 as recommended by the datasheet
 
         ESP_RETURN_IF_FAILED(sci_write_and_verify(SCI_CLOCKF, 0x8800, 0xffff));
 

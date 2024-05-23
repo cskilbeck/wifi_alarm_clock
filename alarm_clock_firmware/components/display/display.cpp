@@ -1,21 +1,6 @@
 //////////////////////////////////////////////////////////////////////
-// there is one display list per screen section
-// each screen section is, say, 16 (32?) lines high
+// there is one display list per screen section, each screen section is 16 lines high
 // for a blit or fill, we add to all the display lists which the rectangle intersects with
-
-// two 18 (16?) bit buffers for dma
-// one 32 (24?) bit buffer for drawing into
-
-// for each display_list
-// 1. draw into the 32 (24?) bit buffer using the display_list_entries
-// 2. convert to 18 (16?) bit into buffer A (while buffer B is being DMA'ed)
-// 3. wait for buffer B DMA to complete
-// 4. kick off buffer A DMA
-// 5. swap buffer A/B
-
-// to add a blit
-// for each display list which the blit intersects
-//    add a cropped display list entry
 
 #include <memory.h>
 #include <math.h>
@@ -333,8 +318,6 @@ using namespace local;
 void display_begin_frame()
 {
     // allocate one dummy head node for each list
-    // we can use 0 as a sentinel because the
-    // entry at location 0 is guaranteed to be a dummy
 
     display_list_used = 0;
 
