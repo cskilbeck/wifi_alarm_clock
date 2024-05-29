@@ -1,0 +1,12 @@
+DRC Rules Export File for PCB: E:\dev\wifi_alarm_clock\pcbs\devkit\alarm_clock_devkit\alarm_clock_devkit.PcbDoc
+RuleKind=MinimumAnnularRing|RuleName=MinimumAnnularRing_Via|Scope=Board|Minimum=5.12
+RuleKind=MinimumAnnularRing|RuleName=MinimumAnnularRing_Pad|Scope=Board|Minimum=5.12
+RuleKind=ShortCircuit|RuleName=ShortCircuit|Scope=Board|Allowed=0
+RuleKind=ShortCircuit|RuleName=ShortCircuit_AGND|Scope=Board|Allowed=1
+RuleKind=SolderMaskExpansion|RuleName=SolderMaskExpansion|Scope=Board|Minimum=1.97
+RuleKind=SolderMaskExpansion|RuleName=SolderMaskExpansion_VIA|Scope=Board|Minimum=1.97
+RuleKind=Width|RuleName=Width|Scope=Board|Minimum=5.00
+RuleKind=Clearance|RuleName=Clearance|Scope=Board|Minimum=5.00
+RuleKind=Clearance|RuleName=Clearance_Keepout|Scope=Board|Minimum=7.87
+RuleKind=Clearance|RuleName=Clearance_VCC|Scope=Board|Minimum=20.00
+RuleKind=Clearance|RuleName=Clearance_AGND|Scope=Board|Minimum=-3.94
